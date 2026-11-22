@@ -16,7 +16,8 @@ apt-get install -y -qq curl wget gnupg2 ca-certificates lsb-release \
 
 log_info "Подключение официального репозитория nginx.org (${ID})..."
 curl -fsSL https://nginx.org/keys/nginx_signing.key \
-    | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg --yes
+    | gpg --batch --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
 
 CODENAME=$(lsb_release -cs)
 if [[ "$ID" == "debian" ]]; then
