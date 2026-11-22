@@ -114,3 +114,7 @@ if [[ -f /usr/local/x-ui/bin/config.json ]]; then
         log_warn "xray run -test вернул предупреждение — проверьте journalctl -u x-ui."
     fi
 fi
+
+set -a; source /etc/3xui-node/state.env; set +a
+python3 /opt/3xui-node/lib/xui_v311_post.py
+systemctl restart x-ui

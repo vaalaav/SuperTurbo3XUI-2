@@ -169,6 +169,7 @@ EOF
         sed -i "s|^api_key:.*|api_key: ${BOUNCER_KEY}|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
         sed -i "s|^mode:.*|mode: nftables|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
         systemctl enable --now crowdsec crowdsec-firewall-bouncer >/dev/null 2>&1
+cscli scenarios remove crowdsecurity/nginx-req-limit-exceeded --force >/dev/null 2>&1 || true
         systemctl restart crowdsec crowdsec-firewall-bouncer
         log_ok "CrowdSec активирован."
     else
@@ -178,7 +179,6 @@ fi
 
 # 5. Объединённый nftables-антисканер
 if [[ "${ENABLE_ANTISCAN:-true}" == "true" ]]; then
-    log_info "Настройка nftables-антисканера (ГРЧЦ, СКИПА, C24Be, F6, Nessly, Censys, Shodan)..."
     mkdir -p /etc/nftables.d
     touch /etc/3xui-antiscan-allow.txt
     if [[ -n "${ADMIN_IP:-}" ]]; then
@@ -201,7 +201,6 @@ STATE_FILE = "/etc/3xui-node/state.env"
 MIN_NETS = 30
 
 TEXT_URLS = [
-    "https://raw.githubusercontent.com/C24Be/AS_Network_List/main/blacklists/blacklist-v4.txt",
     "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_cidr.txt",
     "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_ips.txt",
     "https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/main/public/antiscanner.list",

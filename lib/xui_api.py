@@ -636,6 +636,7 @@ def cmd_configure_ai(args):
     print(json.dumps({"status": "ok", "ai_mode": args.ai_mode}))
 
 
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)

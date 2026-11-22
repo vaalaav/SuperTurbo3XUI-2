@@ -16,8 +16,7 @@ apt-get install -y -qq curl wget gnupg2 ca-certificates lsb-release \
 
 log_info "Подключение официального репозитория nginx.org (${ID})..."
 curl -fsSL https://nginx.org/keys/nginx_signing.key \
-    | gpg --batch --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
-chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
+    | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg --yes
 chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
 
 CODENAME=$(lsb_release -cs)
@@ -28,10 +27,10 @@ else
 fi
 
 echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] ${NGINX_REPO} ${CODENAME} nginx" \
+chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
     > /etc/apt/sources.list.d/nginx.list
 printf "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
     > /etc/apt/preferences.d/99nginx
-chmod 644 /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx
 
 apt-get update -qq
 apt-get install -y -qq nginx

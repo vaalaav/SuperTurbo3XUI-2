@@ -147,6 +147,7 @@ http {
         ~^.*:/robots\.txt(\?|\$) 0;
         ~^.*:/${PANEL_PATH}(/|\$) 0;
         ~^.*:/${SUB_PATH}(/|\$) 0;
+        ~^.*:/${SUB_JSON_PATH:-__disabled__}(/|$) 0;
         ~^.*:/${XHTTP_PATH}(/|\$) 0;
         ~^.*:/${GEO_PATH}(/|\$) 0;
         ~(^1:|:1) 1;
@@ -214,7 +215,6 @@ http {
 
         location = /${PANEL_PATH} { return 301 /${PANEL_PATH}/; }
         location /${PANEL_PATH}/ {
-            limit_req zone=panel_limit burst=30 nodelay;
             proxy_pass http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
@@ -233,7 +233,17 @@ http {
         location = /${SUB_PATH}  { return 404; }
         location = /${SUB_PATH}/ { return 404; }
         location ^~ /${SUB_PATH}/ {
-            proxy_pass http://127.0.0.1:${SUB_PORT}/${SUB_PATH}/;
+            proxy_pass http://127.0.0.1:${SUB_PORT}
+        location = /${SUB_JSON_PATH:-__disabled__}/ { return 404; }
+        location ^~ /${SUB_JSON_PATH:-__disabled__}/ {
+            proxy_pass http://127.0.0.1:${SUB_PORT}/${SUB_JSON_PATH:-__disabled__}/;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$remote_addr;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+/${SUB_PATH}/;
             proxy_http_version 1.1;
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
