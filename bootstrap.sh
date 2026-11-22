@@ -17,7 +17,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; NC
 
 [[ $EUID -eq 0 ]] || { echo -e "${RED}[ERR] Запустите от имени root.${NC}"; exit 1; }
 
-if [[ "$DEFAULT_REPO" == "YOUR_USERNAME/YOUR_REPO" ]]; then
+if [[ "$DEFAULT_REPO" == "vaalaav/SuperTurbo3XUI-2" ]]; then
     echo -e "${YELLOW}[WARN] Не указан GH_REPO в bootstrap.sh.${NC}"
     read -erp "Введите GitHub repo (user/repo): " DEFAULT_REPO
 fi
