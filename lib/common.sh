@@ -32,7 +32,7 @@ require_root() {
 }
 
 init_state() {
-    umask 077
+    umask 022
     mkdir -p "$STATE_DIR" "$BACKUP_ROOT"
     chmod 700 "$STATE_DIR" "$BACKUP_ROOT"
     touch "$STATE_FILE"
