@@ -18,7 +18,7 @@
 Запустите на чистом VPS от имени `root`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/main/bootstrap.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/bootstrap.sh)
 ```
 
 ---
