@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="build-id" content="__BUILD__">
+  <title>__BRAND__ — Distributed Object Storage</title>
+  <style>
+    :root{--bg:#0b1120;--card:#111827;--line:#1f2937;--fg:#e5e7eb;--muted:#9ca3af;--acc:#38bdf8;--ok:#34d399}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);line-height:1.5}
+    .wrap{max-width:960px;margin:0 auto;padding:2rem 1.25rem}
+    header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:2rem}
+    .logo{font-weight:700;font-size:1.15rem;letter-spacing:.02em}.badge{font-size:.8rem;color:var(--ok);border:1px solid #065f46;background:#022c22;padding:.2rem .6rem;border-radius:999px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin:1.5rem 0}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.25rem}
+    .k{font-size:.8rem;color:var(--muted);text-transform:uppercase}.v{font-size:1.45rem;font-weight:600;margin-top:.25rem}
+    form{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+    input{background:#030712;border:1px solid var(--line);color:var(--fg);padding:.6rem .8rem;border-radius:6px;flex:1;min-width:180px}
+    button{background:var(--acc);color:#030712;border:0;padding:.6rem 1.2rem;border-radius:6px;font-weight:600;cursor:pointer}
+    #msg{margin-top:.75rem;font-size:.9rem;color:#fca5a5}
+    footer{margin-top:3rem;font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:1rem;display:flex;justify-content:space-between}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">__BRAND__ Storage</div>
+      <div class="badge">Operational &bull; __REGION__</div>
+    </header>
+    <h1>S3-Compatible NVMe Object Gateway</h1>
+    <p style="color:var(--muted)">Private cluster endpoint for <strong>__DOMAIN__</strong>. Public bucket listing is disabled by policy.</p>
+    <div class="grid">
+      <div class="card"><div class="k">Region</div><div class="v">__REGION__</div></div>
+      <div class="card"><div class="k">Gateway Version</div><div class="v">v__VERSION__</div></div>
+      <div class="card"><div class="k">Pool Availability</div><div class="v" style="color:var(--ok)">99.98%</div></div>
+      <div class="card"><div class="k">Replication</div><div class="v">EC 4+2</div></div>
+    </div>
+    <div class="card">
+      <div class="k">Console Sign-In</div>
+      <form id="f"><input type="text" placeholder="Access Key ID" required><input type="password" placeholder="Secret Key" required><button type="submit">Sign In</button></form>
+      <div id="msg"></div>
+    </div>
+    <footer><span>&copy; __BRAND__ Infrastructure</span><span>Build __BUILD__</span></footer>
+  </div>
+  <script>
+    document.getElementById('f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const m = document.getElementById('msg');
+      m.textContent = 'Verifying credentials...';
+      try {
+        const r = await fetch('/api/auth', {method:'POST'});
+        m.textContent = r.status === 429 ? 'Rate limit exceeded. Try again later.' : 'Invalid access key or session expired.';
+      } catch { m.textContent = 'Authentication gateway unreachable.'; }
+    });
+  </script>
+</body>
+</html>
