@@ -4,12 +4,12 @@ set -eu
 # =============================================================================
 # 3x-ui Modular Node Deploy — GitHub Bootstrap Loader
 # Запуск:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/<USER>/<REPO>/main/bootstrap.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/main/bootstrap.sh)
 # Переменные окружения (опционально):
 #   GH_REPO="user/repo"   GH_BRANCH="main"   GH_TOKEN="ghp_..."
 # =============================================================================
 
-DEFAULT_REPO="${GH_REPO:-YOUR_USERNAME/YOUR_REPO}"
+DEFAULT_REPO="${GH_REPO:-vaalaav/SuperTurbo3XUI-2}"
 BRANCH="${GH_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/3xui-node}"
 
