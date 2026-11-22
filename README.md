@@ -15,18 +15,10 @@
 
 ## Быстрый старт
 
-Перед публикацией замените `YOUR_USERNAME/YOUR_REPO` в `bootstrap.sh` и в команде ниже на ваш GitHub-репозиторий.
-
 Запустите на чистом VPS от имени `root`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/bootstrap.sh)
-```
-
-Для приватного репозитория передайте токен (на диск он не сохраняется):
-
-```bash
-GH_TOKEN="ghp_xxx" bash <(curl -fsSL -H "Authorization: Bearer ghp_xxx" https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/bootstrap.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/main/bootstrap.sh)
 ```
 
 ---
