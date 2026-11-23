@@ -14,7 +14,7 @@ def req(path, data=None, form=False):
         return json.loads(r.read().decode())
 s = req("/panel/api/setting/all")["obj"]
 jp = "/" + (s.get("subJsonPath") or os.urandom(8).hex()).strip("/") + "/"
-uri = xui_api.build_happ_routing_uri(e["DOMAIN"], e.get("GEO_MIRROR_PATH", ""), e.get("ENABLE_GEO_MIRROR", "").lower() == "y")
+uri = xui_api.build_happ_routing_uri(e["DOMAIN"], e.get("GEO_PATH", ""), e.get("ENABLE_GEO_MIRROR", "").lower() in ("true", "y", "1"))
 jr = json.dumps([
     {"type": "field", "outboundTag": "direct", "ip": ["geoip:private", "geoip:ru"]},
     {"type": "field", "outboundTag": "direct", "domain": ["geosite:category-ru", "geosite:ru-available-only-inside", "domain:ru", "domain:su", "domain:xn--p1ai"]}])

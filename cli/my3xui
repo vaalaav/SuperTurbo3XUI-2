@@ -235,30 +235,43 @@ self_update() {
 }
 
 clean_server() {
-    echo -e "\n${RED}${BOLD}ВНИМАНИЕ! ПОЛНАЯ ОЧИСТКА НОДЫ!${NC}"
-    echo "Будут удалены 3x-ui, Xray, Nginx, CrowdSec, Fail2Ban, Antiscan, Psiphon."
-    echo "(Настройки SSH сохраняются, чтобы вы не потеряли доступ.)"
-    read -erp "Введите YES для подтверждения: " c1
-    [[ "$c1" == "YES" ]] || { echo "Отменено."; return; }
+    echo -e "\n${RED}${BOLD}Р’РќРРњРђРќРР•! РџРћР›РќРђРЇ РћР§РРЎРўРљРђ РќРћР”Р«!${NC}"
+    echo "Р‘СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ 3x-ui, Xray, Nginx, CrowdSec, Fail2Ban, Antiscan, Psiphon, DoT/DoH Рё /opt/3xui-node."
+    echo "(РќР°СЃС‚СЂРѕР№РєРё SSH СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ, С‡С‚РѕР±С‹ РІС‹ РЅРµ РїРѕС‚РµСЂСЏР»Рё РґРѕСЃС‚СѓРї.)"
+    read -erp "Р’РІРµРґРёС‚Рµ YES РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ: " c1
+    [[ "$c1" == "YES" ]] || { echo "РћС‚РјРµРЅРµРЅРѕ."; return; }
 
-    systemctl stop x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer antiscan-update.timer 2>/dev/null || true
-    systemctl disable x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer antiscan-restore.service antiscan-update.timer 2>/dev/null || true
+    export DEBIAN_FRONTEND=noninteractive
+    systemctl stop x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh antiscan-update.timer 2>/dev/null || true
+    systemctl disable x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh antiscan-restore.service antiscan-update.timer 2>/dev/null || true
+
     [[ -x /usr/local/x-ui/x-ui ]] && printf "y\n" | /usr/local/x-ui/x-ui uninstall >/dev/null 2>&1 || true
     docker rm -f vps-psiphon >/dev/null 2>&1 || true
+
     apt-get purge -y -qq nginx nginx-common nginx-core crowdsec crowdsec-firewall-bouncer-nftables fail2ban >/dev/null 2>&1 || true
+    apt-get autoremove -y -qq >/dev/null 2>&1 || true
+
     nft delete table inet antiscan 2>/dev/null || true
+    nft delete table ip crowdsec 2>/dev/null || true
+    nft delete table ip6 crowdsec 2>/dev/null || true
     ufw --force disable >/dev/null 2>&1 || true
     ufw --force reset >/dev/null 2>&1 || true
 
     rm -rf /usr/local/x-ui /etc/x-ui /etc/nginx /var/www/masksite /var/www/geo /var/cache/nginx \
-           /etc/crowdsec /var/lib/crowdsec /etc/fail2ban /etc/3xui-node /opt/vps-psiphon \
-           /etc/nftables.d/antiscan.nft /usr/local/sbin/update-antiscan.py /usr/local/sbin/update-geo-mirror.sh \
+           /etc/crowdsec /var/lib/crowdsec /etc/fail2ban /etc/3xui-node /opt/vps-psiphon /opt/3xui-node \
+           /etc/3xui-antiscan-allow.txt /etc/nftables.d/antiscan.nft /usr/local/sbin/update-antiscan.py \
+           /usr/local/sbin/update-geo-mirror.sh /usr/local/bin/cloudflared \
            /etc/systemd/system/antiscan-* /etc/systemd/system/nginx.service.d /etc/systemd/system/x-ui.service.d \
+           /etc/systemd/system/cloudflared-doh.service /etc/systemd/resolved.conf.d/10-dot.conf \
+           /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx /usr/share/keyrings/nginx-archive-keyring.gpg \
+           /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh \
            /etc/sysctl.d/99-xray-custom.conf /etc/cron.d/update-geo-mirror /etc/update-motd.d/99-my3xui \
-           /root/vps-credentials.txt /usr/local/bin/my3xui
+           /root/vps-credentials.txt /root/3xui-node-backups /var/log/3xui-node-install.log /usr/local/bin/my3xui
+
+    systemctl restart systemd-resolved 2>/dev/null || true
     sysctl --system >/dev/null 2>&1 || true
     systemctl daemon-reload
-    echo -e "${GREEN}${BOLD}Очистка завершена.${NC}"
+    echo -e "${GREEN}${BOLD}РћС‡РёСЃС‚РєР° Р·Р°РІРµСЂС€РµРЅР°.${NC}"
     exit 0
 }
 
