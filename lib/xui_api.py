@@ -430,32 +430,24 @@ def cmd_setup_node(args):
         "security": "none",
         "externalProxy": [],
         "xhttpSettings": {
-            "path": f"/{args.xhttp_path.strip('/')}/",
             "host": args.domain,
+            "path": f"/{args.xhttp_path}/",
             "mode": "packet-up",
             "noGRPCHeader": True,
-            "noSSEHeader": False,
             "xPaddingBytes": "200-1500",
             "xPaddingObfsMode": True,
             "xPaddingKey": "sid",
             "xPaddingPlacement": "cookie",
             "xPaddingMethod": "tokenish",
-            "scMaxEachPostBytes": "500000-1000000",
+            "scMaxEachPostBytes": 1000000,
             "scMinPostsIntervalMs": "10-50",
-            "scMaxBufferedPosts": 30,
-            "scStreamUpServerSecs": "20-80",
             "xmux": {
-                "maxConcurrency": "",
                 "maxConnections": "3",
                 "cMaxReuseTimes": "64-128",
                 "hMaxRequestTimes": "600-900",
                 "hMaxReusableSecs": "600-1200",
-                "hKeepAlivePeriod": 0,
-            },
-            "headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-            },
+                "hKeepAlivePeriod": 0
+            }
         },
     }
 
