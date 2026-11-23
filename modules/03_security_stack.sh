@@ -119,6 +119,10 @@ ufw --force enable >/dev/null
 
 # 3. Fail2Ban (nftables + явный journalmatch ssh.service + polling nginx)
 log_info "Настройка Fail2Ban..."
+if ! command -v fail2ban-server >/dev/null 2>&1 || [[ ! -d /etc/fail2ban/filter.d ]]; then
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -o Dpkg::Options::="--force-confmiss" -y -qq fail2ban
+fi
 mkdir -p /var/log/nginx
 touch /var/log/nginx/access.log /var/log/nginx/error.log
 
@@ -202,7 +206,7 @@ MIN_NETS = 30
 
 TEXT_URLS = [
     "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_cidr.txt",
-    "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_ips.txt",
+    "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_cidr.txt",
     "https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/main/public/antiscanner.list",
 ]
 

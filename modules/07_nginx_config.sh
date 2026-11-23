@@ -147,7 +147,7 @@ http {
         ~^.*:/robots\.txt(\?|\$) 0;
         ~^.*:/${PANEL_PATH}(/|\$) 0;
         ~^.*:/${SUB_PATH}(/|\$) 0;
-        ~^.*:/${SUB_JSON_PATH:-__disabled__}(/|$) 0;
+        ~^.*:/${SUB_JSON_PATH:-__disabled__}(/|\$) 0;
         ~^.*:/${XHTTP_PATH}(/|\$) 0;
         ~^.*:/${GEO_PATH}(/|\$) 0;
         ~(^1:|:1) 1;
@@ -233,7 +233,16 @@ http {
         location = /${SUB_PATH}  { return 404; }
         location = /${SUB_PATH}/ { return 404; }
         location ^~ /${SUB_PATH}/ {
-            proxy_pass http://127.0.0.1:${SUB_PORT}
+            proxy_pass http://127.0.0.1:${SUB_PORT}/${SUB_PATH}/;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$remote_addr;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_intercept_errors off;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
         location = /${SUB_JSON_PATH:-__disabled__}/ { return 404; }
         location ^~ /${SUB_JSON_PATH:-__disabled__}/ {
             proxy_pass http://127.0.0.1:${SUB_PORT}/${SUB_JSON_PATH:-__disabled__}/;
@@ -241,15 +250,6 @@ http {
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$remote_addr;
-            add_header Cache-Control "no-store, no-cache, must-revalidate";
-        }
-/${SUB_PATH}/;
-            proxy_http_version 1.1;
-            proxy_set_header Host \$host;
-            proxy_set_header X-Real-IP \$remote_addr;
-            proxy_set_header X-Forwarded-For \$remote_addr;
-            proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_intercept_errors off;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
         }
 
@@ -297,7 +297,7 @@ ${MASK_BLOCK}
 }
 EOF
 
-if ! nginx -t 2>/dev/null; then
+if ! nginx -t; then
     log_warn "Ошибка синтаксиса Nginx! Откат из ${NGINX_BACKUP}..."
     cp -a "${NGINX_BACKUP}/nginx/." /etc/nginx/
     nginx -t || true

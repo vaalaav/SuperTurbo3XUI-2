@@ -360,35 +360,14 @@ def cmd_setup_node(args):
 
     # Инбаунд #1: VLESS + TCP/RAW + Reality (Self-Steal на 443 -> Nginx 127.0.0.1:8443)
     reality_settings = {
-        "clients": [
-            {
-                "id": client_uuid,
-                "flow": "xtls-rprx-vision",
-                "email": "user1-reality",
-                "limitIp": 0,
-                "totalGB": 0,
-                "expiryTime": 0,
-                "enable": True,
-                "tgId": 0,
-                "subId": sub_id,
-                "comment": "Primary Reality client",
-                "reset": 0,
-            }
-        ],
+        "clients": [],
         "decryption": "none",
         "fallbacks": [],
     }
     reality_stream = {
         "network": "tcp",
         "security": "reality",
-        "externalProxy": [
-            {
-                "forceTls": "same",
-                "dest": args.domain,
-                "port": 443,
-                "remark": "",
-            }
-        ],
+        "externalProxy": [],
         "realitySettings": {
             "show": False,
             "xver": 1,
@@ -433,6 +412,7 @@ def cmd_setup_node(args):
             "port": 443,
             "protocol": "vless",
             "tag": "inbound-reality-selfsteal",
+            "disableFlow": False,
             "settings": json.dumps(reality_settings),
             "streamSettings": json.dumps(reality_stream),
             "sniffing": json.dumps(sniffing),
@@ -441,35 +421,14 @@ def cmd_setup_node(args):
 
     # Инбаунд #2: VLESS + XHTTP Packet-UP за Nginx HTTP/2 (127.0.0.1:11443)
     xhttp_settings_obj = {
-        "clients": [
-            {
-                "id": client_uuid,
-                "flow": "",
-                "email": "user1-xhttp",
-                "limitIp": 0,
-                "totalGB": 0,
-                "expiryTime": 0,
-                "enable": True,
-                "tgId": 0,
-                "subId": sub_id,
-                "comment": "Primary XHTTP client",
-                "reset": 0,
-            }
-        ],
+        "clients": [],
         "decryption": "none",
         "fallbacks": [],
     }
     xhttp_stream = {
         "network": "xhttp",
         "security": "none",
-        "externalProxy": [
-            {
-                "forceTls": "tls",
-                "dest": args.domain,
-                "port": 443,
-                "remark": "",
-            }
-        ],
+        "externalProxy": [],
         "xhttpSettings": {
             "path": f"/{args.xhttp_path.strip('/')}/",
             "host": args.domain,
@@ -512,12 +471,21 @@ def cmd_setup_node(args):
             "port": 11443,
             "protocol": "vless",
             "tag": "inbound-xhttp-packetup",
+            "disableFlow": True,
             "settings": json.dumps(xhttp_settings_obj),
             "streamSettings": json.dumps(xhttp_stream),
             "sniffing": json.dumps(sniffing),
         }
     )
 
+    ibs = {i.get("tag"): i["id"] for i in api.list_inbounds()}
+    rid, xid = ibs["inbound-reality-selfsteal"], ibs["inbound-xhttp-packetup"]
+    api._req("POST", "/panel/api/hosts/add", {"inboundId": rid, "remark": f"{loc} - Reality", "address": args.domain, "port": 443, "security": "same", "isDisabled": False, "isHidden": False})
+    api._req("POST", "/panel/api/hosts/add", {"inboundId": xid, "remark": f"{loc} - XHTTP", "address": args.domain, "port": 443, "security": "tls", "sni": args.domain, "fingerprint": args.utls_fp, "alpn": "h2,http/1.1", "isDisabled": False, "isHidden": False})
+    for c in (api._req("GET", "/panel/api/clients/list").get("obj") or []):
+        if c.get("email") in ("user1", "user1-reality", "user1-xhttp"):
+            api._req("POST", f"/panel/api/clients/del/{c['id']}", {})
+    api._req("POST", "/panel/api/clients/add", {"client": {"id": client_uuid, "email": "user1", "flow": "xtls-rprx-vision", "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0, "subId": sub_id, "comment": "Primary client", "reset": 0}, "inboundIds": [rid, xid]})
     api.restart_xray()
     print(
         json.dumps(
