@@ -480,12 +480,12 @@ def cmd_setup_node(args):
 
     ibs = {i.get("tag"): i["id"] for i in api.list_inbounds()}
     rid, xid = ibs["inbound-reality-selfsteal"], ibs["inbound-xhttp-packetup"]
-    api._req("POST", "/panel/api/hosts/add", {"inboundId": rid, "remark": f"{loc} - Reality", "address": args.domain, "port": 443, "security": "same", "isDisabled": False, "isHidden": False})
-    api._req("POST", "/panel/api/hosts/add", {"inboundId": xid, "remark": f"{loc} - XHTTP", "address": args.domain, "port": 443, "security": "tls", "sni": args.domain, "fingerprint": args.utls_fp, "alpn": "h2,http/1.1", "isDisabled": False, "isHidden": False})
+    api._req("POST", "/panel/api/hosts/add", {"inboundIds": [rid], "remark": f"{loc} - Reality", "address": args.domain, "port": 443, "security": "same", "isDisabled": False, "isHidden": False})
+    api._req("POST", "/panel/api/hosts/add", {"inboundIds": [xid], "remark": f"{loc} - XHTTP", "address": args.domain, "port": 443, "security": "tls", "sni": args.domain, "fingerprint": args.utls_fp, "alpn": "h2,http/1.1", "isDisabled": False, "isHidden": False})
     for c in (api._req("GET", "/panel/api/clients/list").get("obj") or []):
         if c.get("email") in ("user1", "user1-reality", "user1-xhttp"):
             api._req("POST", f"/panel/api/clients/del/{c['id']}", {})
-    api._req("POST", "/panel/api/clients/add", {"client": {"id": client_uuid, "email": "user1", "flow": "xtls-rprx-vision", "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0, "subId": sub_id, "comment": "Primary client", "reset": 0}, "inboundIds": [rid, xid]})
+    api._req("POST", "/panel/api/clients/add", {"client": {"email": "user1", "uuid": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id, "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0, "comment": "Primary client", "reset": 0}, "inboundIds": [rid, xid]})
     api.restart_xray()
     print(
         json.dumps(
