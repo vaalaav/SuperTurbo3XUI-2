@@ -50,7 +50,7 @@ find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 cp -a "${SRC_DIR}/." "$INSTALL_DIR/"
 
 cat <<EOF > "${INSTALL_DIR}/.repo"
-GH_REPO=${DEFAULT_REPO}
+GH_REPO="${GH_REPO:-vaalaav/SuperTurbo3XUI-2}"
 GH_BRANCH=${BRANCH}
 UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
