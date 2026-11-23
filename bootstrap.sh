@@ -9,7 +9,8 @@ set -eu
 #   GH_REPO="user/repo"   GH_BRANCH="main"   GH_TOKEN="ghp_..."
 # =============================================================================
 
-DEFAULT_REPO="${GH_REPO:-vaalaav/SuperTurbo3XUI-2}"
+GH_REPO="${GH_REPO:-vaalaav/SuperTurbo3XUI-2}"
+DEFAULT_REPO="${GH_REPO}"
 BRANCH="${GH_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/3xui-node}"
 
