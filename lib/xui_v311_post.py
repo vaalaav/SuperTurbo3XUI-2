@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import json, os, pathlib, re, subprocess, sys, urllib.parse, urllib.request
-sys.path.insert(0, "/opt/3xui-node/lib")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xui_api
 e = os.environ
 base = f"http://127.0.0.1:{e['PANEL_PORT']}/{e['PANEL_PATH']}"
@@ -11,7 +11,10 @@ def req(path, data=None, form=False):
     body = urllib.parse.urlencode(data).encode() if form else json.dumps(data or {}).encode()
     h["Content-Type"] = "application/x-www-form-urlencoded" if form else "application/json"
     with urllib.request.urlopen(urllib.request.Request(base + path, body, h), timeout=20) as r:
-        return json.loads(r.read().decode())
+        res = json.loads(r.read().decode())
+    if isinstance(res, dict) and res.get("success") is False:
+        raise RuntimeError(f"API 3x-ui отклонил {path}: {res.get('msg') or res}")
+    return res
 s = req("/panel/api/setting/all")["obj"]
 jp = "/" + (s.get("subJsonPath") or os.urandom(8).hex()).strip("/") + "/"
 uri = xui_api.build_happ_routing_uri(e["DOMAIN"], e.get("GEO_PATH", ""), e.get("ENABLE_GEO_MIRROR", "").lower() in ("true", "y", "1"))
@@ -28,7 +31,6 @@ if sp.exists():
 t = xui_api.build_base_xray_template(os.path.exists("/usr/local/x-ui/bin/geosite_RU.dat"))
 o = req("/panel/api/xray/").get("obj")
 for _ in (1, 2, 3): o = json.loads(o) if isinstance(o, str) and o.strip() else o.get("xraySetting", o) if isinstance(o, dict) else {}
-t["outbounds"] += [i for i in o.get("outbounds", []) if i.get("tag") not in ("direct", "blocked", "api", "IPv4")]
-t["routing"]["rules"] += [r for r in o.get("routing", {}).get("rules", []) if r.get("outboundTag") not in ("api", "blocked", "direct")]
+t = xui_api.merge_custom_into_base(t, o)
 req("/panel/api/xray/update", {"xraySetting": json.dumps(t, indent=2)}, form=True)
 req("/panel/api/server/restartXrayService")

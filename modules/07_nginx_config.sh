@@ -255,7 +255,8 @@ http {
 
         location /${XHTTP_PATH}/ {
             proxy_pass http://xray_xhttp;
-            proxy_http_version 2;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_buffering off;
             proxy_request_buffering off;
             gzip off;
