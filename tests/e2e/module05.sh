@@ -3,7 +3,8 @@
 # РАЗРУШИТЕЛЬНО: переустанавливает 3x-ui. Запуск: sudo E2E_DISPOSABLE=1 bash tests/e2e/module05.sh <сценарий>
 #   fresh       — чистая установка, повторный запуск, восстановление удалённого API-токена
 #   upgrade     — на сервере 3x-ui 3.10.2 с данными; модуль обновляет её с бэкапом и сохраняет данные
-#   no-ip-limit — IP Limit выключен, пароль панели начинается с «-»
+#   no-ip-limit — IP Limit и зеркало geo выключены, пароль панели начинается с «-»
+#   psiphon     — модуль 06 в режиме psiphon: настоящий туннель, маршруты Gemini в Xray
 set -euo pipefail
 
 [[ "${E2E_DISPOSABLE:-}" == "1" ]] || { echo "Только для одноразовой машины: задайте E2E_DISPOSABLE=1." >&2; exit 2; }
@@ -44,6 +45,11 @@ scenario_fresh() {
     bash "${E2E}/fixture.sh" true
     run_module05 fresh
     bash "${E2E}/check.sh"
+
+    step "ручной запуск обновления geo-файлов (как по таймеру)"
+    systemctl start 3xui-node-geo-update.service || die "запуск 3xui-node-geo-update завершился ошибкой"
+    systemctl is-failed --quiet 3xui-node-geo-update.service && die "юнит 3xui-node-geo-update в состоянии failed"
+    echo "  ok   обновление geo-файлов по таймеру отработало"
 
     step "повторный запуск: установщик не запускается, токен прежний"
     local tok1 mtime1
@@ -118,8 +124,58 @@ scenario_upgrade() {
 
 scenario_no_ip_limit() {
     step "IP Limit выключен, пароль начинается с «-»"
-    bash "${E2E}/fixture.sh" false '-Kq7!x#P2&m_Z@9w^R+e='
+    bash "${E2E}/fixture.sh" false '-Kq7!x#P2&m_Z@9w^R+e=' false
     run_module05 no-ip-limit
+    bash "${E2E}/check.sh"
+}
+
+scenario_psiphon() {
+    step "модуль 05, затем модуль 06 в режиме psiphon"
+    bash "${E2E}/fixture.sh" true
+    run_module05 psiphon-05
+    # shellcheck source=lib/common.sh
+    source "${REPO}/lib/common.sh"
+    save_var AI_MODE psiphon
+    save_var PSIPHON_REGION ""
+    save_var PSIPHON_PORT 1080
+    save_var PSIPHON_IP_DETECT false
+    echo "  ..   $(date -u +%H:%M:%S) модуль 06 (psiphon)"
+    if ! bash "${REPO}/install.sh" --only 06_ai_routing >"${LOG_DIR}/psiphon-06.log" 2>&1; then
+        tail -n 40 "${LOG_DIR}/psiphon-06.log" >&2
+        die "модуль 06 завершился с ошибкой"
+    fi
+    echo "  ..   $(date -u +%H:%M:%S) модуль 06 завершён"
+    sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/psiphon-06.log" | grep -aE '\[(OK|WARN|INFO)\]' | cut -c1-160 || true
+
+    echo "  ..   образ контейнера: $(docker inspect --format '{{.Image}}' vps-psiphon 2>/dev/null) ($(docker image inspect --format '{{index .RepoDigests 0}}' "$(docker inspect --format '{{.Config.Image}}' vps-psiphon)" 2>/dev/null))"
+    [[ "$(state_get PSIPHON_STATUS)" == ok ]] || die "PSIPHON_STATUS=$(state_get PSIPHON_STATUS), ожидался ok"
+    systemctl is-active --quiet vps-psiphon || die "служба vps-psiphon не активна"
+    local direct_ip tunnel_ip
+    direct_ip=$(curl -4 -fsS --max-time 15 https://api.ipify.org || true)
+    tunnel_ip=$(curl -4 -fsS --max-time 20 --socks5-hostname 127.0.0.1:1080 https://api.ipify.org || true)
+    [[ -n "$tunnel_ip" && "$tunnel_ip" != "$direct_ip" ]] || die "туннель не выводит трафик (напрямую ${direct_ip:-?}, через Psiphon ${tunnel_ip:-нет})"
+    echo "  ok   туннель Psiphon работает: напрямую ${direct_ip}, через Psiphon ${tunnel_ip}"
+    ss -tln | grep -qE '(0\.0\.0\.0|\*|\[::\]):1080\b' && die "SOCKS5 Psiphon опубликован не только на loopback"
+    echo "  ok   SOCKS5 Psiphon только на 127.0.0.1"
+
+    local tpl
+    tpl=$(panel_api "$(state_get XUI_API_TOKEN)" /panel/api/xray/ -X POST | jq -r '.obj | (fromjson? // .) | .xraySetting | (fromjson? // .)')
+    jq -e '.outbounds[] | select(.tag == "psiphon-out") | .settings == {"address": "127.0.0.1", "port": 1080}' <<<"$tpl" >/dev/null \
+        || die "в шаблоне нет корректного аутбаунда psiphon-out"
+    jq -e '[.routing.rules[] | select(.outboundTag == "psiphon-out" and .network == "tcp")] | length == 1' <<<"$tpl" >/dev/null \
+        || die "нет правила Gemini → psiphon-out"
+    echo "  ok   аутбаунд psiphon-out и маршрут Gemini в шаблоне Xray"
+    bash "${E2E}/check.sh"
+
+    step "режим AI none: модуль 06 снимает маршруты Psiphon"
+    save_var AI_MODE none
+    bash "${REPO}/install.sh" --only 06_ai_routing >"${LOG_DIR}/psiphon-none.log" 2>&1 \
+        || { tail -n 30 "${LOG_DIR}/psiphon-none.log" >&2; die "модуль 06 (none) завершился с ошибкой"; }
+    tpl=$(panel_api "$(state_get XUI_API_TOKEN)" /panel/api/xray/ -X POST | jq -r '.obj | (fromjson? // .) | .xraySetting | (fromjson? // .)')
+    jq -e '([.outbounds[] | select(.tag == "psiphon-out")] | length == 0)
+           and ([.routing.rules[] | select((.domain // []) | index("geosite:google-deepmind"))] | length == 0)' <<<"$tpl" >/dev/null \
+        || die "после режима none в шаблоне остались маршруты Psiphon"
+    echo "  ok   маршруты Psiphon сняты"
     bash "${E2E}/check.sh"
 }
 
@@ -127,6 +183,7 @@ case "${1:-}" in
     fresh)       scenario_fresh ;;
     upgrade)     scenario_upgrade ;;
     no-ip-limit) scenario_no_ip_limit ;;
-    *) echo "Сценарий: fresh | upgrade | no-ip-limit" >&2; exit 2 ;;
+    psiphon)     scenario_psiphon ;;
+    *) echo "Сценарий: fresh | upgrade | no-ip-limit | psiphon" >&2; exit 2 ;;
 esac
 echo; echo "=== сценарий ${1} пройден"

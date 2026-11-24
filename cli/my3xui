@@ -94,6 +94,30 @@ run_audit() {
         [[ "$code" == "200" ]] && echo -e "  ${ok} Маскировка https://${DOMAIN}/ -> HTTP ${code}" || echo -e "  ${bad} Маскировка вернула HTTP ${code}"
     fi
 
+    # Geo-файлы обновляются таймером; упавший запуск виден как failed.
+    if systemctl is-active --quiet 3xui-node-geo-update.timer; then
+        if systemctl is-failed --quiet 3xui-node-geo-update.service; then
+            echo -e "  ${bad} Последнее обновление geo-файлов завершилось ошибкой (journalctl -u 3xui-node-geo-update)"
+        else
+            echo -e "  ${ok} Таймер обновления geo-файлов активен"
+        fi
+    else
+        echo -e "  ${bad} Таймер обновления geo-файлов не активен"
+    fi
+
+    # Psiphon проверяется по факту: запрос через его SOCKS5 должен выйти не с IP сервера.
+    if [[ "${AI_MODE:-none}" == "psiphon" || "${AI_MODE:-none}" == "combo" ]]; then
+        local pip
+        pip=$(curl -4 -fsS --max-time 15 --socks5-hostname "127.0.0.1:${PSIPHON_PORT:-1080}" https://api.ipify.org 2>/dev/null || true)
+        if [[ -n "$pip" && "$pip" != "${SERVER_IP:-}" ]]; then
+            echo -e "  ${ok} Туннель Psiphon работает (выход ${pip})"
+        else
+            echo -e "  ${bad} Туннель Psiphon не отвечает — vps-psiphon, journalctl -u vps-psiphon"
+        fi
+        [[ "${PSIPHON_STATUS:-}" == "failed" ]] && \
+            echo -e "  ${bad} Маршруты Gemini через Psiphon не применены при установке — my3xui run 06_ai_routing"
+    fi
+
     if [[ -n "${SERVER_IP:-}" ]]; then
         if ! curl -skI --max-time 4 "https://${SERVER_IP}/" >/dev/null 2>&1; then
             echo -e "  ${ok} Запрос по IP (${SERVER_IP}) отклонён (ssl_reject_handshake)"
@@ -247,7 +271,12 @@ clean_server() {
     systemctl disable x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh antiscan-restore.service antiscan-update.timer 2>/dev/null || true
 
     [[ -x /usr/local/x-ui/x-ui ]] && printf "y\n" | /usr/local/x-ui/x-ui uninstall >/dev/null 2>&1 || true
+    # Psiphon удаляет сам себя полностью (юниты, контейнер, образ, конфиг, CLI).
+    if command -v vps-psiphon >/dev/null 2>&1; then
+        vps-psiphon uninstall >/dev/null 2>&1 || true
+    fi
     docker rm -f vps-psiphon >/dev/null 2>&1 || true
+    systemctl disable --now 3xui-node-geo-update.timer >/dev/null 2>&1 || true
 
     apt-get purge -y -qq nginx nginx-common nginx-core crowdsec crowdsec-firewall-bouncer-nftables fail2ban >/dev/null 2>&1 || true
     apt-get autoremove -y -qq >/dev/null 2>&1 || true
@@ -268,7 +297,9 @@ clean_server() {
            /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh \
            /etc/sysctl.d/99-xray-custom.conf /etc/cron.d/update-geo-mirror /etc/update-motd.d/99-my3xui \
            /root/vps-credentials.txt /root/3xui-node-backups /var/log/3xui-node-install.log /usr/local/bin/my3xui \
-           /usr/bin/x-ui /etc/systemd/system/x-ui.service /var/log/3xui-node-xui-install.log
+           /usr/bin/x-ui /etc/systemd/system/x-ui.service /var/log/3xui-node-xui-install.log \
+           /usr/local/sbin/3xui-node-geo-update /etc/systemd/system/3xui-node-geo-update.service \
+           /etc/systemd/system/3xui-node-geo-update.timer /var/log/3xui-node-psiphon-install.log
 
     systemctl restart systemd-resolved 2>/dev/null || true
     sysctl --system >/dev/null 2>&1 || true

@@ -6,7 +6,15 @@ require_root
 load_state
 
 if [[ "${AI_MODE:-none}" == "none" ]]; then
-    log_info "AI-модуль отключён (AI_MODE=none), шаг пропущен."
+    # Если раньше был выбран AI-выход, его маршруты остаются в шаблоне Xray (модуль 05 их переносит):
+    # снимаем их, чтобы режим none действительно означал прямой выход.
+    ensure_xui_api_token
+    python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
+        --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
+        --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" --ai-mode=none >/dev/null
+    restart_xui
+    save_var PSIPHON_STATUS "off"
+    log_info "AI-модуль отключён (AI_MODE=none): маршруты AI-выходов в Xray не используются."
     exit 0
 fi
 
@@ -77,58 +85,116 @@ PYEOF
     fi
 fi
 
-if [[ "$AI_MODE" == "psiphon" || "$AI_MODE" == "combo" ]]; then
-    log_info "Развёртывание Psiphon (Chara-Freedom/vps-psiphon, регион ${PSIPHON_REGION})..."
+# --- Psiphon: выход для Gemini через установщик Chara-Freedom/vps-psiphon ---------------
+# Установщик берётся по закреплённому коммиту и сверяется по sha256; образ контейнера закреплён
+# по digest. Обновление — сменить три значения ниже после проверки новой версии.
+PSIPHON_INSTALLER_COMMIT="a42966845ecc5b477d14962b9ddf5c284dbc1bcd"   # vps-psiphon 1.3, 2026-11-10
+PSIPHON_INSTALLER_SHA256="1428beeaab91de159e5354308a8b30948ca6c406bfa37a5d5298071e0f6319d2"
+PSIPHON_IMAGE="swarupsengupta2007/psiphon:latest"
+PSIPHON_INSTALL_LOG="/var/log/3xui-node-psiphon-install.log"
+PSIPHON_OK=false
+
+# Docker из подписанного репозитория дистрибутива, а не скриптом get.docker.com без проверки.
+ensure_docker() {
     if ! command -v docker >/dev/null 2>&1; then
-        curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
-        systemctl enable --now docker >/dev/null 2>&1
+        log_info "Установка Docker (пакет docker.io дистрибутива)..."
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
     fi
-    command -v git >/dev/null 2>&1 || apt-get install -y -qq git
+    systemctl enable --now docker >/dev/null 2>&1 || true
+    docker info >/dev/null 2>&1 || log_err "Docker установлен, но не отвечает — проверьте systemctl status docker."
+}
 
-    PSIPHON_DIR="/opt/vps-psiphon"
-    if [[ -d "${PSIPHON_DIR}/.git" ]]; then
-        git -C "$PSIPHON_DIR" pull -q || true
-    else
-        rm -rf "$PSIPHON_DIR"
-        git clone -q https://github.com/Chara-Freedom/vps-psiphon.git "$PSIPHON_DIR"
+# Туннель считается рабочим, когда запрос через SOCKS5 выходит в интернет не с IP сервера.
+# Установщик ждёт туннель 120 с и, если служба жива, завершается успешно и без него.
+psiphon_exit_ip() {
+    curl -4 -fsS --max-time 15 --socks5-hostname "127.0.0.1:${PSIPHON_PORT}" https://api.ipify.org 2>/dev/null || true
+}
+
+setup_psiphon() {
+    local tmp exit_ip=""
+    ensure_docker
+    # Остатки прежней схемы модуля (git-клон и самосборный образ) мешают установщику.
+    [[ -d /opt/vps-psiphon/.git ]] && rm -rf /opt/vps-psiphon
+    docker image rm -f vps-psiphon:local >/dev/null 2>&1 || true
+
+    tmp=$(mktemp)
+    if ! curl -fsSL --retry 3 --max-time 60 -o "$tmp" \
+        "https://raw.githubusercontent.com/Chara-Freedom/vps-psiphon/${PSIPHON_INSTALLER_COMMIT}/psiphon_install.sh"; then
+        rm -f "$tmp"; log_warn "Не удалось скачать установщик vps-psiphon."; return 1
+    fi
+    if ! echo "${PSIPHON_INSTALLER_SHA256}  ${tmp}" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$tmp"; log_warn "Установщик vps-psiphon не совпал по sha256 — не запускаю."; return 1
     fi
 
-    docker build -q -t vps-psiphon:local "$PSIPHON_DIR" >/dev/null
-    docker rm -f vps-psiphon >/dev/null 2>&1 || true
+    log_info "Установка Psiphon (vps-psiphon, регион ${PSIPHON_REGION:-авто}, лог: ${PSIPHON_INSTALL_LOG})..."
+    ( umask 077; : > "$PSIPHON_INSTALL_LOG" )
+    local args=(--socks-port "$PSIPHON_PORT" --bind-loopback --no-http --impersonate --image "$PSIPHON_IMAGE")
+    [[ -n "${PSIPHON_REGION:-}" ]] && args+=(--region "$PSIPHON_REGION")
+    if ! bash "$tmp" "${args[@]}" </dev/null >>"$PSIPHON_INSTALL_LOG" 2>&1; then
+        rm -f "$tmp"
+        tail -n 15 "$PSIPHON_INSTALL_LOG" >&2 || true
+        log_warn "Установщик vps-psiphon завершился с ошибкой — подробности в ${PSIPHON_INSTALL_LOG}."
+        return 1
+    fi
+    rm -f "$tmp"
 
-    docker run -d \
-        --name vps-psiphon \
-        --restart unless-stopped \
-        --network host \
-        vps-psiphon:local \
-        --region "${PSIPHON_REGION}" \
-        --socks-listen "127.0.0.1:${PSIPHON_PORT}" \
-        --impersonate \
-        --no-http >/dev/null
+    log_info "Ожидание туннеля Psiphon (до 3 минут)..."
+    for _ in $(seq 1 36); do
+        exit_ip=$(psiphon_exit_ip)
+        [[ -n "$exit_ip" && "$exit_ip" != "$SERVER_IP" ]] && break
+        exit_ip=""
+        sleep 5
+    done
+    if [[ -z "$exit_ip" ]]; then
+        log_warn "Туннель Psiphon не поднялся за 3 минуты; служба vps-psiphon продолжает попытки."
+        return 1
+    fi
+    log_ok "Туннель Psiphon работает: выход через ${exit_ip} (SOCKS5 127.0.0.1:${PSIPHON_PORT})."
+}
 
-    sleep 4
-    if ss -tln | grep -q "127.0.0.1:${PSIPHON_PORT}"; then
-        log_ok "Psiphon SOCKS5 запущен на 127.0.0.1:${PSIPHON_PORT}."
+PSIPHON_STATUS="off"
+if [[ "$AI_MODE" == "psiphon" || "$AI_MODE" == "combo" ]]; then
+    if setup_psiphon; then
+        PSIPHON_OK=true
+        PSIPHON_STATUS="ok"
     else
-        log_warn "Psiphon ещё инициализируется — проверьте docker logs vps-psiphon."
+        PSIPHON_STATUS="failed"
+        log_warn "Маршруты Gemini через Psiphon НЕ добавлены, чтобы не отправлять трафик в нерабочий туннель."
+        log_warn "Проверка: vps-psiphon (статус) и journalctl -u vps-psiphon; повтор: my3xui run 06_ai_routing."
     fi
 fi
+save_var PSIPHON_STATUS "$PSIPHON_STATUS"
 
-log_info "Интеграция AI-маршрутов (${AI_MODE}) в 3x-ui..."
+# В Xray попадает только то, что реально работает: без туннеля режим psiphon сводится к none, combo — к warp.
+EFFECTIVE_MODE="$AI_MODE"
+if ! $PSIPHON_OK; then
+    case "$AI_MODE" in
+        psiphon) EFFECTIVE_MODE="none" ;;
+        combo)   EFFECTIVE_MODE="warp" ;;
+    esac
+fi
+
+log_info "Интеграция AI-маршрутов (${EFFECTIVE_MODE}) в 3x-ui..."
 ensure_xui_api_token
-python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
+AI_RES=$(python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
     --panel-port="${PANEL_PORT}" \
     --panel-path="${PANEL_PATH}" \
     --panel-user="${PANEL_USER}" \
     --panel-pass="${PANEL_PASS}" \
-    --ai-mode="${AI_MODE}" \
+    --ai-mode="${EFFECTIVE_MODE}" \
     --warp-priv-key="${WARP_PRIV}" \
     --warp-peer-pub="${WARP_PEER_PUB}" \
     --warp-v4="${WARP_V4}" \
     --warp-v6="${WARP_V6}" \
     --warp-reserved="${WARP_RESERVED}" \
     --psiphon-port="${PSIPHON_PORT}" \
-    --psiphon-ip-detect="${PSIPHON_IP_DETECT}" >/dev/null
+    --psiphon-ip-detect="${PSIPHON_IP_DETECT}")
 
 restart_xui
-log_ok "AI-маршрутизация (${AI_MODE}) применена."
+APPLIED=$(jq -r '.applied | join(", ")' <<<"$AI_RES")
+if [[ -n "$APPLIED" ]]; then
+    log_ok "AI-маршрутизация применена: ${APPLIED}."
+else
+    log_warn "AI-маршрутизация не применена ни для одного выхода (выбран режим ${AI_MODE})."
+fi

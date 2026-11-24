@@ -6,12 +6,16 @@
 
 from __future__ import annotations
 
+import argparse
+import contextlib
 import copy
+import io
 import json
 import os
 import sys
 import threading
 import unittest
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -20,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import xui_api  # noqa: E402
 
 DOMAIN = "node.example.com"
+# Встроенный шаблон Xray панели 3x-ui v3.11.0 (internal/web/service/config.json).
+DEFAULT_TPL = json.loads((Path(__file__).parent / "fixtures" / "xray_default_3.11.0.json").read_text(encoding="utf-8"))
 UUID = "11111111-2222-4333-8444-555555555555"
 
 
@@ -80,7 +86,7 @@ class MergeCustomIntoBaseTest(unittest.TestCase):
     }
 
     def base(self) -> dict:
-        return xui_api.build_base_xray_template(geo_ru_available=True)
+        return xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
 
     def current_with_ai(self) -> dict:
         cur = self.base()
@@ -106,6 +112,183 @@ class MergeCustomIntoBaseTest(unittest.TestCase):
         cur["routing"]["rules"].append({"type": "field", "outboundTag": "blocked", "ip": ["1.2.3.4"]})
         merged = xui_api.merge_custom_into_base(self.base(), cur)
         self.assertEqual(merged, self.base())
+
+
+class BuildBaseTemplateTest(unittest.TestCase):
+    """Базовый шаблон проекта строится поверх встроенного шаблона установленной панели."""
+
+    def test_keeps_builtin_parts_of_installed_panel(self) -> None:
+        tpl = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        # Раньше шаблон собирался с нуля: терялись RoutingService, metrics, inbound tunnel.
+        self.assertIn("RoutingService", tpl["api"]["services"])
+        self.assertEqual(tpl["metrics"], DEFAULT_TPL["metrics"])
+        self.assertEqual(tpl["inbounds"], DEFAULT_TPL["inbounds"])
+        self.assertEqual(tpl["policy"], DEFAULT_TPL["policy"])
+
+    def test_direct_prefers_ipv4_via_sockopt_not_deprecated_freedom_key(self) -> None:
+        tpl = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        direct = next(o for o in tpl["outbounds"] if o["tag"] == "direct")
+        self.assertNotIn("domainStrategy", direct["settings"])
+        self.assertEqual(direct["streamSettings"]["sockopt"]["domainStrategy"], "UseIPv4")
+        self.assertEqual(direct["settings"]["finalRules"], DEFAULT_TPL["outbounds"][0]["settings"]["finalRules"])
+
+    def test_appends_ru_block_rules_after_builtin_rules(self) -> None:
+        tpl = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        rules = tpl["routing"]["rules"]
+        self.assertEqual(rules[: len(DEFAULT_TPL["routing"]["rules"])], DEFAULT_TPL["routing"]["rules"])
+        self.assertIn("ext:geosite_RU.dat:ru-available-only-inside", rules[-2]["domain"])
+        self.assertEqual(rules[-1]["ip"], ["geoip:ru", "ext:geoip_RU.dat:ru"])
+        self.assertEqual(tpl["routing"]["domainStrategy"], "IPIfNonMatch")
+
+    def test_without_ru_geofiles_uses_only_builtin_categories(self) -> None:
+        tpl = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=False)
+        domains, ips = xui_api.template_geodata_tokens(tpl)
+        self.assertFalse([t for t in domains + ips if t.startswith("ext:")])
+
+    def test_does_not_modify_default_template(self) -> None:
+        before = copy.deepcopy(DEFAULT_TPL)
+        xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        self.assertEqual(DEFAULT_TPL, before)
+
+    def test_geodata_tokens_skip_rules_without_geo_files(self) -> None:
+        tpl = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        domains, ips = xui_api.template_geodata_tokens(tpl)
+        self.assertEqual(domains, ["ext:geosite_RU.dat:ru-available-only-inside", "geosite:category-ru"])
+        self.assertEqual(ips, ["ext:geoip_RU.dat:ru", "geoip:private", "geoip:ru"])
+
+
+class FakeXrayPanel(BaseHTTPRequestHandler):
+    """Панель для configure-ai: хранит шаблон Xray, проверяет geo-правила по списку известных
+    категорий (как /panel/api/xray/geodata/validate), отвечает состоянием Xray."""
+
+    template: ClassVar[dict] = {}
+    known: ClassVar[set[str]] = set()
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+    def _send(self, obj: dict) -> None:
+        body = json.dumps(obj).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        if self.path == "/p/panel/api/server/status":
+            return self._send({"success": True, "obj": {"xray": {"state": "running"}}})
+        self._send({"success": False, "msg": "404"})
+
+    def do_POST(self) -> None:
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+        form = dict(urllib.parse.parse_qsl(raw))
+        if self.path == "/p/panel/api/setting/all":
+            return self._send({"success": True, "obj": {}})
+        if self.path == "/p/panel/api/xray/":
+            return self._send({"success": True, "obj": json.dumps({"xraySetting": self.template})})
+        if self.path == "/p/panel/api/xray/update":
+            type(self).template = json.loads(form["xraySetting"])
+            return self._send({"success": True})
+        if self.path == "/p/panel/api/xray/geodata/validate":
+            issues = [
+                {"token": t, "reason": "categoryMissing"} for t in form["tokens"].split(",") if t not in self.known
+            ]
+            return self._send({"success": True, "obj": issues})
+        if self.path == "/p/panel/api/server/restartXrayService":
+            return self._send({"success": True})
+        self._send({"success": False, "msg": "404"})
+
+
+class ConfigureAiPsiphonTest(unittest.TestCase):
+    """configure-ai для Psiphon: форма аутбаунда, маршруты Gemini, отказ при неизвестных категориях."""
+
+    server: ClassVar[HTTPServer]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.server = HTTPServer(("127.0.0.1", 0), FakeXrayPanel)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.server.shutdown()
+
+    def setUp(self) -> None:
+        FakeXrayPanel.template = xui_api.build_base_xray_template(DEFAULT_TPL, geo_ru_available=True)
+        domains, ips = xui_api.template_geodata_tokens(FakeXrayPanel.template)
+        FakeXrayPanel.known = set(domains + ips) | {"geosite:google-deepmind", "geosite:category-ip-geo-detect"}
+        self._env = os.environ.get("XUI_API_TOKEN")
+        os.environ["XUI_API_TOKEN"] = "t"
+        self._sleep = xui_api.time.sleep
+        xui_api.time.sleep = lambda _s: None  # wait_xray_running без реальных пауз
+
+    def tearDown(self) -> None:
+        xui_api.time.sleep = self._sleep
+        if self._env is None:
+            os.environ.pop("XUI_API_TOKEN", None)
+        else:
+            os.environ["XUI_API_TOKEN"] = self._env
+
+    def run_configure(self, mode: str, ip_detect: str = "false") -> dict:
+        args = argparse.Namespace(
+            panel_port=str(self.server.server_port),
+            panel_path="p",
+            panel_user="",
+            panel_pass="",
+            ai_mode=mode,
+            warp_priv_key="",
+            warp_peer_pub="",
+            warp_v4="",
+            warp_v6="",
+            warp_reserved="",
+            psiphon_port="1080",
+            psiphon_ip_detect=ip_detect,
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            xui_api.cmd_configure_ai(args)
+        return json.loads(out.getvalue())
+
+    def test_psiphon_outbound_uses_current_socks_form_on_loopback(self) -> None:
+        res = self.run_configure("psiphon")
+        self.assertEqual(res["applied"], ["psiphon-out"])
+        out = next(o for o in FakeXrayPanel.template["outbounds"] if o["tag"] == "psiphon-out")
+        # Форма с массивом servers — наследие V2Ray, убранное из документации Xray.
+        self.assertEqual(out["settings"], {"address": "127.0.0.1", "port": 1080})
+
+    def test_gemini_tcp_goes_to_psiphon_and_udp_is_blocked_right_after_api(self) -> None:
+        self.run_configure("psiphon", ip_detect="true")
+        rules = FakeXrayPanel.template["routing"]["rules"]
+        self.assertEqual(rules[0]["outboundTag"], "api")
+        self.assertEqual(
+            rules[1],
+            {"type": "field", "network": "udp", "domain": ["geosite:google-deepmind"], "outboundTag": "blocked"},
+        )
+        self.assertEqual(rules[2]["outboundTag"], "psiphon-out")
+        self.assertEqual(rules[2]["network"], "tcp")
+        self.assertEqual(rules[2]["domain"], ["geosite:google-deepmind", "geosite:category-ip-geo-detect"])
+
+    def test_mode_none_removes_previous_psiphon_routes(self) -> None:
+        # Так модуль 06 снимает маршруты, если туннель перестал подниматься.
+        self.run_configure("psiphon")
+        res = self.run_configure("none")
+        self.assertEqual(res["applied"], [])
+        self.assertFalse([o for o in FakeXrayPanel.template["outbounds"] if o["tag"] == "psiphon-out"])
+        self.assertFalse(
+            [
+                r
+                for r in FakeXrayPanel.template["routing"]["rules"]
+                if "geosite:google-deepmind" in (r.get("domain") or [])
+            ]
+        )
+
+    def test_unknown_geodata_category_is_rejected_before_saving(self) -> None:
+        FakeXrayPanel.known.discard("geosite:google-deepmind")
+        before = copy.deepcopy(FakeXrayPanel.template)
+        with self.assertRaisesRegex(RuntimeError, "geosite:google-deepmind"):
+            self.run_configure("psiphon")
+        self.assertEqual(FakeXrayPanel.template, before)
 
 
 class FakePanel(BaseHTTPRequestHandler):

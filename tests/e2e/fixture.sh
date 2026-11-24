@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Готовит «чистый сервер» для сквозного теста модуля 05: без 3x-ui, со state.env и Fail2ban,
 # как после модулей 01–04. РАЗРУШИТЕЛЬНО: удаляет 3x-ui, /etc/x-ui и /etc/3xui-node.
-# Аргументы: $1 — ENABLE_IP_LIMIT (true/false, по умолчанию true), $2 — PANEL_PASS (необязательно).
+# Аргументы: $1 — ENABLE_IP_LIMIT (true/false, по умолчанию true), $2 — PANEL_PASS (необязательно),
+# $3 — ENABLE_GEO_MIRROR (true/false, по умолчанию true).
 set -euo pipefail
 
 [[ "${E2E_DISPOSABLE:-}" == "1" ]] || { echo "Только для одноразовой машины: задайте E2E_DISPOSABLE=1." >&2; exit 2; }
@@ -11,12 +12,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IP_LIMIT="${1:-true}"
 # По умолчанию пароль в формате генератора модуля 01 — со спецсимволами.
 PASS="${2:-Kq7!x#P2&m_Z@9w^R+e=}"
+GEO_MIRROR="${3:-true}"
 
 systemctl stop x-ui 2>/dev/null || true
 rm -rf /usr/local/x-ui /etc/x-ui /usr/bin/x-ui /etc/systemd/system/x-ui.service /etc/systemd/system/x-ui.service.d \
        /etc/3xui-node /root/3xui-node-backups /var/log/3xui-node-install.log /var/log/3xui-node-xui-install.log \
        /etc/fail2ban/jail.d/3x-ipl.conf /etc/fail2ban/jail.d/3x-ipl-backend.conf \
-       /etc/fail2ban/filter.d/3x-ipl.conf /etc/fail2ban/action.d/3x-ipl.conf /var/log/x-ui /etc/default/x-ui
+       /etc/fail2ban/filter.d/3x-ipl.conf /etc/fail2ban/action.d/3x-ipl.conf /var/log/x-ui /etc/default/x-ui \
+       /usr/local/sbin/3xui-node-geo-update /etc/systemd/system/3xui-node-geo-update.service \
+       /etc/systemd/system/3xui-node-geo-update.timer /var/www/geo
 systemctl daemon-reload
 
 if ! command -v fail2ban-client >/dev/null; then
@@ -68,6 +72,6 @@ save_var UTLS_FP chrome
 save_var CLIENT_UUID 11111111-2222-4333-8444-555555555555
 save_var SUB_ID subid0001
 save_var ENABLE_HAPP true
-save_var ENABLE_GEO_MIRROR false
+save_var ENABLE_GEO_MIRROR "$GEO_MIRROR"
 save_var ENABLE_IP_LIMIT "$IP_LIMIT"
-echo "fixture: ENABLE_IP_LIMIT=${IP_LIMIT}"
+echo "fixture: ENABLE_IP_LIMIT=${IP_LIMIT} ENABLE_GEO_MIRROR=${GEO_MIRROR}"

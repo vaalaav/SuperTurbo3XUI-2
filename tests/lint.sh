@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-mapfile -t shell_files < <(git ls-files '*.sh' cli/my3xui)
+mapfile -t shell_files < <(git ls-files '*.sh' cli/my3xui cli/3xui-node-geo-update)
 echo "shellcheck: ${#shell_files[@]} файлов"
 shellcheck --severity=warning --external-sources "${shell_files[@]}"
 

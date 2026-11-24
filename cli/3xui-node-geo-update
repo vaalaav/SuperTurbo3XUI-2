@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Обновление geo-файлов 3x-ui и зеркала geoip.dat/geosite.dat для Happ.
+# Запускается раз в сутки таймером 3xui-node-geo-update.timer и модулем 05 при установке.
+#   3xui-node-geo-update                — обновить файлы через панель и синхронизировать зеркало
+#   3xui-node-geo-update --mirror-only  — только синхронизировать зеркало с файлами панели
+# Ошибка завершает скрипт с ненулевым кодом: юнит переходит в failed, это видно в systemctl.
+set -euo pipefail
+
+BASE_DIR="@BASE_DIR@"
+# shellcheck source=lib/common.sh
+source "${BASE_DIR}/lib/common.sh"
+require_root
+load_state
+
+case "${1:-}" in
+    "")            UPDATE=true ;;
+    --mirror-only) UPDATE=false ;;
+    *) log_err "Неизвестный аргумент: $1 (допустимо: --mirror-only)" ;;
+esac
+
+if $UPDATE; then
+    wait_xui_ready
+    ensure_xui_api_token
+    # Штатное обновление панели: все шесть файлов, сверка с дайджестом релиза, атомарная замена;
+    # затем проверка, что правила текущего шаблона Xray находят свои категории.
+    python3 "${BASE_DIR}/lib/xui_api.py" update-geo \
+        --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
+        --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" >/dev/null
+    log_ok "Geo-файлы 3x-ui обновлены."
+fi
+
+if [[ "${ENABLE_GEO_MIRROR:-false}" == "true" ]]; then
+    # Зеркало для Happ — копии наборов runetfreedom, которые панель хранит как *_RU.dat.
+    install -d -m 755 -o www-data -g www-data /var/www/geo
+    for pair in geoip_RU.dat:geoip.dat geosite_RU.dat:geosite.dat; do
+        src="/usr/local/x-ui/bin/${pair%%:*}"
+        dst="/var/www/geo/${pair##*:}"
+        [[ -s "$src" ]] || log_err "Нет файла ${src} для зеркала."
+        cp --preserve=timestamps "$src" "${dst}.tmp"
+        chown www-data:www-data "${dst}.tmp"
+        chmod 644 "${dst}.tmp"
+        mv -f "${dst}.tmp" "$dst"
+    done
+    log_ok "Зеркало geo-файлов обновлено (/var/www/geo)."
+fi

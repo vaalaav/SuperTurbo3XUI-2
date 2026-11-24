@@ -42,6 +42,27 @@ grep -q "^vless://${CLIENT_UUID}@${DOMAIN}:443?.*security=tls.*type=xhttp" <<<"$
     && ok "ссылка XHTTP на ${DOMAIN}:443 через TLS" || bad "нет корректной ссылки XHTTP"
 [[ "$(api /panel/api/server/status | jq -r .obj.xray.state)" == running ]] && ok "Xray запущен" || bad "Xray не запущен"
 
+# Этап 3: шаблон Xray построен поверх встроенного шаблона панели, а не собран с нуля.
+tpl=$(api /panel/api/xray/ -X POST | jq -r '.obj | (fromjson? // .) | .xraySetting | (fromjson? // .)')
+jq -e '.api.services | index("RoutingService")' <<<"$tpl" >/dev/null \
+    && ok "шаблон Xray содержит RoutingService встроенного шаблона" || bad "в шаблоне Xray нет RoutingService"
+jq -e '.metrics.tag == "metrics_out"' <<<"$tpl" >/dev/null && ok "шаблон Xray содержит metrics" || bad "в шаблоне Xray нет metrics"
+jq -e '[.outbounds[] | select(.protocol == "freedom" and (.settings.domainStrategy // null) != null)] | length == 0' <<<"$tpl" >/dev/null \
+    && ok "нет устаревшего freedom.domainStrategy" || bad "в шаблоне остался freedom.domainStrategy"
+issues=$(api /panel/api/xray/geodata/validate -X POST --data-urlencode kind=domain \
+    --data-urlencode "tokens=$(jq -r '[.routing.rules[].domain // [] | .[] | select(startswith("geosite:") or startswith("ext:"))] | unique | join(",")' <<<"$tpl")" \
+    | jq '.obj | length')
+[[ "$issues" == 0 ]] && ok "все geo-категории правил найдены в файлах" || bad "geo-категорий не найдено: $issues"
+
+systemctl is-enabled --quiet 3xui-node-geo-update.timer && ok "таймер обновления geo-файлов включён" || bad "таймер geo-файлов не включён"
+if [[ "${ENABLE_GEO_MIRROR:-false}" == "true" ]]; then
+    if cmp -s /usr/local/x-ui/bin/geosite_RU.dat /var/www/geo/geosite.dat && cmp -s /usr/local/x-ui/bin/geoip_RU.dat /var/www/geo/geoip.dat; then
+        ok "зеркало geo-файлов совпадает с файлами панели"
+    else
+        bad "зеркало geo-файлов не совпадает с файлами панели"
+    fi
+fi
+
 if [[ "${ENABLE_IP_LIMIT:-true}" == "true" ]]; then
     fail2ban-client status 3x-ipl >/dev/null 2>&1 && ok "jail 3x-ipl активен" || bad "jail 3x-ipl не активен"
     fail2ban-client status nginx-botsearch >/dev/null 2>&1 && ok "jail nginx-botsearch работает рядом с 3x-ipl" || bad "jail nginx-botsearch пропал"

@@ -100,25 +100,9 @@ cat <<'EOF' > /var/www/html/404.html
 </head><body><main><h1>404</h1><p>The requested resource was not found.</p></main></body></html>
 EOF
 
-if [[ "${ENABLE_GEO_MIRROR:-false}" == "true" ]]; then
-    log_info "Настройка зеркала geoip.dat / geosite.dat на Nginx..."
-    cat <<'EOF' > /usr/local/sbin/update-geo-mirror.sh
-#!/usr/bin/env bash
-set -eu
-mkdir -p /var/www/geo
-BASE="https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download"
-for f in geoip.dat geosite.dat; do
-    if curl -fsSL --max-time 60 "${BASE}/${f}" -o "/var/www/geo/${f}.tmp"; then
-        mv "/var/www/geo/${f}.tmp" "/var/www/geo/${f}"
-    fi
-done
-chown -R www-data:www-data /var/www/geo
-EOF
-    chmod +x /usr/local/sbin/update-geo-mirror.sh
-    /usr/local/sbin/update-geo-mirror.sh || log_warn "Не удалось скачать geo-файлы для зеркала, повторится по расписанию."
-    echo "30 3 * * * root /usr/local/sbin/update-geo-mirror.sh >/dev/null 2>&1" > /etc/cron.d/update-geo-mirror
-    chmod 644 /etc/cron.d/update-geo-mirror
-fi
+# Зеркало geo-файлов для Happ заполняет модуль 05 из файлов панели (3xui-node-geo-update).
+# Прежний скрипт с cron качал их отдельно, без проверки целостности, — убираем его при повторном запуске.
+rm -f /usr/local/sbin/update-geo-mirror.sh /etc/cron.d/update-geo-mirror
 
 chown -R www-data:www-data /var/www /var/cache/nginx
 log_ok "SSL-сертификат ECDSA и сайт-заглушка (${MASK_TEMPLATE}) готовы."

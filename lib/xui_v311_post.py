@@ -40,10 +40,3 @@ sp = pathlib.Path("/etc/3xui-node/state.env")
 if sp.exists():
     ls = [line for line in sp.read_text().splitlines() if not line.startswith("SUB_JSON_PATH=")]
     sp.write_text("\n".join(ls + [f"SUB_JSON_PATH={jp.strip('/')}"]) + "\n")
-t = xui_api.build_base_xray_template(os.path.exists("/usr/local/x-ui/bin/geosite_RU.dat"))
-o = req("/panel/api/xray/").get("obj")
-for _ in (1, 2, 3):
-    o = json.loads(o) if isinstance(o, str) and o.strip() else o.get("xraySetting", o) if isinstance(o, dict) else {}
-t = xui_api.merge_custom_into_base(t, o)
-req("/panel/api/xray/update", {"xraySetting": json.dumps(t, indent=2)}, form=True)
-req("/panel/api/server/restartXrayService")

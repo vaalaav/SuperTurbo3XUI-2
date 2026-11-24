@@ -28,6 +28,14 @@ sed 's/\x1b\[[0-9;]*m//g' /var/log/3xui-node-install.log 2>&1 | tail -n 40
 section "лог установщика 3x-ui (хвост)"
 sed 's/\x1b\[[0-9;]*m//g' /var/log/3xui-node-xui-install.log 2>&1 | tail -n 40
 
+if command -v vps-psiphon >/dev/null 2>&1 || [[ -f /var/log/3xui-node-psiphon-install.log ]]; then
+    section "Psiphon: служба, контейнер, установщик"
+    systemctl status vps-psiphon --no-pager -l 2>&1 | head -n 15
+    docker ps -a --filter name=vps-psiphon 2>&1
+    journalctl -u vps-psiphon --no-pager -o short-precise 2>&1 | tail -n 40
+    sed 's/\x1b\[[0-9;]*m//g' /var/log/3xui-node-psiphon-install.log 2>&1 | tail -n 40
+fi
+
 cp -f /var/log/3xui-node-install.log /var/log/3xui-node-xui-install.log "$OUT/" 2>/dev/null
 chmod -R a+r "$OUT"
 exit 0

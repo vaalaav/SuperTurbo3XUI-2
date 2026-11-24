@@ -68,13 +68,6 @@ LimitNOFILE=524288
 EOF
 systemctl daemon-reload
 
-log_info "Загрузка geosite_RU.dat / geoip_RU.dat..."
-mkdir -p /usr/local/x-ui/bin
-curl -fsSL --max-time 45 "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat" \
-    -o /usr/local/x-ui/bin/geosite_RU.dat 2>/dev/null || log_warn "Не удалось скачать geosite_RU.dat"
-curl -fsSL --max-time 45 "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat" \
-    -o /usr/local/x-ui/bin/geoip_RU.dat 2>/dev/null || log_warn "Не удалось скачать geoip_RU.dat"
-
 # Настройки панели через её CLI, а не прямой записью в SQLite: CLI знает схему текущей версии.
 # Панель слушает только loopback и без собственного TLS — снаружи она доступна через nginx.
 systemctl stop x-ui 2>/dev/null || true
@@ -89,6 +82,15 @@ systemctl stop x-ui 2>/dev/null || true
 systemctl enable x-ui >/dev/null 2>&1
 restart_xui
 ensure_xui_api_token
+
+# Все geo-файлы обновляются при каждой установке штатным механизмом панели (сверка с дайджестом
+# релиза, атомарная замена) — до настройки шаблона, чтобы его правила проверялись по свежим файлам.
+log_info "Обновление geo-файлов 3x-ui (Loyalsoldier, IR, RU)..."
+python3 "${BASE_DIR}/lib/xui_api.py" update-geo \
+    --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
+    --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" >/dev/null \
+    || log_err "Не удалось обновить geo-файлы 3x-ui — проверьте доступ сервера к GitHub."
+log_ok "Geo-файлы 3x-ui обновлены."
 
 XRAY_BIN=$(find /usr/local/x-ui/bin -maxdepth 1 -name "xray-linux-*" -type f | head -n 1)
 [[ -n "$XRAY_BIN" ]] || log_err "Бинарник Xray не найден в /usr/local/x-ui/bin."
@@ -145,3 +147,33 @@ set -a; source /etc/3xui-node/state.env; set +a
 python3 "${BASE_DIR}/lib/xui_v311_post.py"
 # Модули после 05 сразу обращаются к API, поэтому модуль завершается только когда панель отвечает.
 restart_xui
+
+# Ежедневное обновление geo-файлов и зеркала для Happ (вместо прежнего cron модуля 04).
+sed "s|@BASE_DIR@|${BASE_DIR}|" "${BASE_DIR}/cli/3xui-node-geo-update" > /usr/local/sbin/3xui-node-geo-update
+chmod 755 /usr/local/sbin/3xui-node-geo-update
+cat <<'EOF' > /etc/systemd/system/3xui-node-geo-update.service
+[Unit]
+Description=Обновление geo-файлов 3x-ui и зеркала для Happ
+After=network-online.target x-ui.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/3xui-node-geo-update
+EOF
+cat <<'EOF' > /etc/systemd/system/3xui-node-geo-update.timer
+[Unit]
+Description=Ежедневное обновление geo-файлов 3x-ui
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+RandomizedDelaySec=45min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now 3xui-node-geo-update.timer >/dev/null 2>&1
+rm -f /usr/local/sbin/update-geo-mirror.sh /etc/cron.d/update-geo-mirror
+/usr/local/sbin/3xui-node-geo-update --mirror-only
