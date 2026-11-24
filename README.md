@@ -4,6 +4,7 @@
 
 **Модульное развёртывание защищённой зарубежной VPN-ноды на базе 3x-ui ≥ v3.11.0**
 
+[![CI](https://github.com/vaalaav/SuperTurbo3XUI-2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vaalaav/SuperTurbo3XUI-2/actions/workflows/ci.yml)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04%20%7C%2026.04-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
 ![Debian](https://img.shields.io/badge/Debian-12%20%7C%2013-A81D33?style=for-the-badge&logo=debian&logoColor=white)
 ![3x-ui](https://img.shields.io/badge/3x--ui-%E2%89%A5%203.11.0-2563EB?style=for-the-badge)
@@ -160,7 +161,7 @@ my3xui clean                # Полная очистка сервера (с с�
 
 - **«Нужна 3x-ui не ниже v3.11.0» или «Версия 3x-ui должна быть тегом релиза»** — в `--xui-version` или `state.env` указана неподходящая версия. Нужен тег вида `v3.11.0`.
 - **«Установщик 3x-ui завершился с ошибкой»** — последние строки вывода показываются сразу, полный вывод в `/var/log/3xui-node-xui-install.log`. Чаще всего это недоступность GitHub с сервера.
-- **«Панель 3x-ui не начала слушать 127.0.0.1:…»** — смотрите `journalctl -u x-ui`; повторный запуск: `my3xui run 05_install_3xui`.
+- **«Панель 3x-ui не ответила на 127.0.0.1:… за 30 с»** — после перезапуска панель не начала отвечать; причину покажет `journalctl -u x-ui`, повторный запуск: `my3xui run 05_install_3xui`.
 - **«Xray не запустился после применения конфигурации»** — панель приняла настройки, но Xray с ними не стартует; причина в тексте ошибки и в `journalctl -u x-ui`.
 - **«Проверка ссылок панели не пройдена»** — панель отдаёт клиенту ссылки не на `домен:443` или с другим UUID; модуль останавливается, чтобы не выдать нерабочую подписку.
 - **«Сохранённый API-токен отклонён панелью — выпускаю новый»** — это предупреждение, не ошибка: токен восстанавливается автоматически.
