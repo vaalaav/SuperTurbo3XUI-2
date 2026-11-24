@@ -21,6 +21,7 @@ FROM_MODULE=""
 RESUME=false
 CONFIG_FILE=""
 NON_INTERACTIVE=false
+XUI_VERSION_ARG=""
 
 usage() {
     cat <<EOF
@@ -31,6 +32,7 @@ usage() {
   --from <модуль>    Запустить начиная с указанного модуля
   --resume           Продолжить с последнего незавершённого модуля
   --config <файл>    Неинтерактивный запуск с готовым state.env
+  --xui-version <v> Версия 3x-ui (тег релиза, не ниже v${XUI_MIN_VERSION}; по умолчанию ${XUI_DEFAULT_VERSION})
   --list             Показать список доступных модулей
   -h, --help         Справка
 EOF
@@ -42,6 +44,7 @@ while [[ $# -gt 0 ]]; do
         --from)    FROM_MODULE="${2:-}"; shift 2 ;;
         --resume)  RESUME=true; shift ;;
         --config)  CONFIG_FILE="${2:-}"; NON_INTERACTIVE=true; shift 2 ;;
+        --xui-version) XUI_VERSION_ARG="${2:-}"; shift 2 ;;
         --list)    printf '%s\n' "${MODULES[@]}"; exit 0 ;;
         -h|--help) usage; exit 0 ;;
         *)         log_err "Неизвестный аргумент: $1" ;;
@@ -55,6 +58,14 @@ if [[ -n "$CONFIG_FILE" ]]; then
     chmod 600 "$STATE_FILE"
     save_var NON_INTERACTIVE "true"
     log_ok "Конфигурация загружена из ${CONFIG_FILE}"
+fi
+
+if [[ -n "$XUI_VERSION_ARG" ]]; then
+    validate_xui_version "$XUI_VERSION_ARG"
+    export XUI_VERSION="$XUI_VERSION_ARG"
+    init_state
+    save_var XUI_VERSION "$XUI_VERSION_ARG"
+    log_info "Версия 3x-ui зафиксирована: ${XUI_VERSION_ARG}"
 fi
 
 if $RESUME && [[ -f "$PROGRESS_FILE" ]]; then

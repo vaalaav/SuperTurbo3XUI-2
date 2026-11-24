@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-import json, os, pathlib, re, subprocess, sys, urllib.parse, urllib.request
+import json, os, pathlib, sys, urllib.parse, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xui_api
 e = os.environ
 base = f"http://127.0.0.1:{e['PANEL_PORT']}/{e['PANEL_PATH']}"
-out = subprocess.check_output(["/usr/local/x-ui/x-ui", "setting", "-getApiToken"], text=True, stderr=subprocess.STDOUT)
-tok = re.search(r"apiToken:\s*(\S+)", out).group(1)
+# Постоянный токен проекта (ensure_xui_api_token в lib/common.sh). Вызов -getApiToken здесь
+# перевыпускал бы токен при каждом запуске и аннулировал предыдущий.
+tok = e.get("XUI_API_TOKEN", "").strip()
+if not tok:
+    sys.exit("XUI_API_TOKEN не задан: модуль должен вызвать ensure_xui_api_token перед этим скриптом.")
 def req(path, data=None, form=False):
     h = {"Authorization": "Bearer " + tok}
     body = urllib.parse.urlencode(data).encode() if form else json.dumps(data or {}).encode()

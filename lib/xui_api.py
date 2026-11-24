@@ -26,6 +26,7 @@ class XuiApiClient:
         self.cj = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
         self.token = None
+        self.csrf = None
 
     def _req(self, method: str, endpoint: str, data=None, form=False, check=True):
         """Запрос к API панели. При check=True ответ {"success": false} считается ошибкой:
@@ -40,6 +41,9 @@ class XuiApiClient:
         headers = {"Accept": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        elif self.csrf:
+            # Сессия по cookie: 3.11 требует X-CSRF-Token на изменяющих запросах, включая /login.
+            headers["X-CSRF-Token"] = self.csrf
         body = None
         if data is not None:
             if form:
@@ -50,68 +54,46 @@ class XuiApiClient:
                 headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            import urllib.parse as _up, re as _re
-            _u = _up.urlsplit(req.full_url)
-            _origin = f'{_u.scheme}://{_u.netloc}'
-            if not getattr(self, '_bearer_token', '') and not getattr(self, '_csrf_init', False):
-                self._csrf_init = True
-                self._csrf_ref = req.full_url.rsplit('/', 1)[0] + '/'
-                self._csrf_tok = ''
-                try:
-                    with self.opener.open(self._csrf_ref, timeout=10) as _r0:
-                        self._csrf_tok = _r0.headers.get('X-CSRF-Token', '') or ''
-                        _html = _r0.read().decode('utf-8', 'ignore')
-                        if not self._csrf_tok:
-                            _cm = _re.search(r'csrf[_-]?token[^A-Za-z0-9_-]+(?:content=)?[\x22\x27]([A-Za-z0-9._~+/=-]{8,})', _html, _re.I)
-                            if _cm:
-                                self._csrf_tok = _cm.group(1)
-                except Exception:
-                    pass
-            req.add_header('Origin', _origin)
-            req.add_header('Referer', getattr(self, '_csrf_ref', _origin + '/'))
-            req.add_header('Sec-Fetch-Site', 'same-origin')
-            req.add_header('X-Requested-With', 'XMLHttpRequest')
-            _tok = getattr(self, '_csrf_tok', '')
-            for _h in getattr(self.opener, 'handlers', []):
-                _cj = getattr(_h, 'cookiejar', None)
-                if _cj is not None:
-                    for _c in _cj:
-                        if 'csrf' in _c.name.lower() or 'xsrf' in _c.name.lower():
-                            _tok = _c.value
-            if _tok:
-                req.add_header('X-CSRF-Token', _tok)
-                req.add_header('X-XSRF-Token', _tok)
-            if getattr(self, '_bearer_token', ''):
-                req.add_header('Authorization', 'Bearer ' + self._bearer_token)
             with self.opener.open(req, timeout=20) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 return json.loads(raw) if raw.strip() else {}
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {e.code} on {endpoint}: {err_body}") from e
+            raise RuntimeError(f"HTTP {e.code} на {method} {endpoint}: {err_body[:300]}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Панель 3x-ui недоступна ({self.base_url}): {e.reason}") from e
+
+    def _fetch_csrf(self) -> str:
+        tok = self._raw_req("GET", "/csrf-token").get("obj") or ""
+        if not tok:
+            raise RuntimeError("Панель не выдала CSRF-токен (/csrf-token).")
+        return tok
 
     def login(self):
-        import subprocess as _sp, re as _re_tok
-        try:
-            _out = _sp.check_output(['/usr/local/x-ui/x-ui', 'setting', '-getApiToken'], text=True, stderr=_sp.STDOUT)
-            _tm = _re_tok.search(r'apiToken:\s*(\S+)', _out)
-            if _tm:
-                self._bearer_token = _tm.group(1)
+        """Авторизация. Основной путь — постоянный API-токен проекта из XUI_API_TOKEN
+        (его выпускает ensure_xui_api_token в lib/common.sh). Запасной — логин и пароль панели."""
+        token = os.environ.get("XUI_API_TOKEN", "").strip()
+        if token:
+            self.token = token
+            try:
                 self.get_settings()
-                return
-        except Exception:
-            self._bearer_token = ''
-        # 3x-ui >= 3.11 принимает тело /login только в JSON.
+                return True
+            except RuntimeError as e:
+                if not str(e).startswith("HTTP 401"):
+                    raise
+                self.token = None
+        if not (self.username and self.password):
+            raise RuntimeError("Нет рабочего API-токена (XUI_API_TOKEN) и не заданы логин/пароль панели.")
+        self.csrf = self._fetch_csrf()
         res = self._req("POST", "/login", {"username": self.username, "password": self.password}, check=False)
         if not res.get("success"):
-            raise RuntimeError(f"Не удалось авторизоваться в API 3x-ui: {res}")
+            raise RuntimeError(f"Не удалось авторизоваться в API 3x-ui: {res.get('msg') or res}")
+        self.csrf = self._fetch_csrf()
         return True
 
     def get_settings(self):
-        try:
-            res = self._req("POST", "/panel/api/setting/all", {})
-        except RuntimeError:
-            res = self._req("GET", "/panel/api/setting/all")
+        # В 3.11 эндпоинт только POST; GET отвечает 404 и маскировал бы настоящую ошибку (например 401).
+        res = self._req("POST", "/panel/api/setting/all", {})
         if not res.get("success"):
             raise RuntimeError(f"Ошибка чтения настроек 3x-ui: {res}")
         return res.get("obj", {})

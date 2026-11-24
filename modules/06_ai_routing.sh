@@ -115,6 +115,7 @@ if [[ "$AI_MODE" == "psiphon" || "$AI_MODE" == "combo" ]]; then
 fi
 
 log_info "Интеграция AI-маршрутов (${AI_MODE}) в 3x-ui..."
+ensure_xui_api_token
 python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
     --panel-port "${PANEL_PORT}" \
     --panel-path "${PANEL_PATH}" \

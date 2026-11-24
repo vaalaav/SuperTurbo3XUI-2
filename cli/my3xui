@@ -266,7 +266,8 @@ clean_server() {
            /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx /usr/share/keyrings/nginx-archive-keyring.gpg \
            /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh \
            /etc/sysctl.d/99-xray-custom.conf /etc/cron.d/update-geo-mirror /etc/update-motd.d/99-my3xui \
-           /root/vps-credentials.txt /root/3xui-node-backups /var/log/3xui-node-install.log /usr/local/bin/my3xui
+           /root/vps-credentials.txt /root/3xui-node-backups /var/log/3xui-node-install.log /usr/local/bin/my3xui \
+           /usr/bin/x-ui /etc/systemd/system/x-ui.service /var/log/3xui-node-xui-install.log
 
     systemctl restart systemd-resolved 2>/dev/null || true
     sysctl --system >/dev/null 2>&1 || true
