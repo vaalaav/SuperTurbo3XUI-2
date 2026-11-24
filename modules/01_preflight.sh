@@ -134,7 +134,7 @@ fi
 echo -e "\n5. Системный DNS на VPS:"
 echo "   [1] Нативный systemd-resolved DoT (рекомендуется)"
 echo "   [2] Не менять системный DNS"
-echo "   [3] Локальный DoH (cloudflared 127.0.0.1:5053)"
+echo "   [3] Локальный DoH (dnscrypt-proxy 127.0.0.1:5053, Cloudflare и Quad9)"
 read -erp "   Выбор [1]: " DNS_CHOICE
 case "${DNS_CHOICE:-1}" in
     2) SYSTEM_DNS_MODE="keep" ;;

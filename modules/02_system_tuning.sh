@@ -110,6 +110,7 @@ configure_dot() {
         log_warn "systemd-resolved не найден, системный DNS оставлен без изменений."
         return 0
     fi
+    disable_doh_proxy
     log_info "Настройка нативного DNS-over-TLS (systemd-resolved)..."
     mkdir -p /etc/systemd/resolved.conf.d
     cat <<'EOF' > /etc/systemd/resolved.conf.d/10-dot.conf
@@ -131,38 +132,101 @@ EOF
     fi
 }
 
+# Локальный DoH-прокси прежних версий проекта. `cloudflared proxy-dns` удалён из cloudflared
+# начиная с 2026.2.0, и такая служба не запускается — при любом режиме DNS она убирается.
+remove_legacy_cloudflared() {
+    [[ -f /etc/systemd/system/cloudflared-doh.service || -x /usr/local/bin/cloudflared ]] || return 0
+    systemctl disable --now cloudflared-doh.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/cloudflared-doh.service /usr/local/bin/cloudflared
+    systemctl daemon-reload
+    log_info "Удалён прежний DoH-прокси cloudflared (команда proxy-dns больше не поддерживается)."
+}
+
+disable_doh_proxy() {
+    systemctl disable --now 3xui-node-doh.service >/dev/null 2>&1 || true
+}
+
+# Локальный DoH-прокси: dnscrypt-proxy из репозитория дистрибутива на 127.0.0.1:5053, серверы
+# Cloudflare и Quad9 заданы штампами с IP-адресами — без загрузки списков и без bootstrap-DNS.
+# Пакетные socket- и resolvconf-юниты отключаются: они слушают 127.0.2.1:53 и правят resolv.conf.
 configure_doh() {
-    log_info "Установка локального DoH-прокси (cloudflared 127.0.0.1:5053)..."
-    local arch
-    arch=$(dpkg --print-architecture)
-    local bin_url="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}"
-    if ! curl -fsSL --max-time 60 "$bin_url" -o /usr/local/bin/cloudflared; then
-        log_warn "Не удалось скачать cloudflared, переключаюсь на нативный DoT."
+    log_info "Установка локального DoH-прокси (dnscrypt-proxy, 127.0.0.1:5053)..."
+    if ! apt-get install -y -qq dnscrypt-proxy >/dev/null; then
+        log_warn "Не удалось установить dnscrypt-proxy, переключаюсь на нативный DoT."
         configure_dot
         return 0
     fi
-    chmod +x /usr/local/bin/cloudflared
+    systemctl disable --now dnscrypt-proxy.socket dnscrypt-proxy.service dnscrypt-proxy-resolvconf.service >/dev/null 2>&1 || true
+    systemctl mask dnscrypt-proxy.socket dnscrypt-proxy.service dnscrypt-proxy-resolvconf.service >/dev/null 2>&1 || true
 
-    cat <<'EOF' > /etc/systemd/system/cloudflared-doh.service
+    install -d -m 755 /etc/3xui-node
+    cat <<'EOF' > /etc/3xui-node/dnscrypt-proxy.toml
+# Создано модулем 02 проекта 3xui-node: системный DoH через Cloudflare и Quad9.
+listen_addresses = ['127.0.0.1:5053']
+server_names = ['cloudflare-doh', 'quad9-doh']
+ipv4_servers = true
+ipv6_servers = false
+dnscrypt_servers = false
+doh_servers = true
+require_dnssec = false
+require_nolog = false
+require_nofilter = false
+lb_strategy = 'p2'
+timeout = 5000
+keepalive = 30
+cache = true
+ignore_system_dns = true
+
+[static]
+  # DoH, 1.1.1.1, cloudflare-dns.com, /dns-query
+  [static.'cloudflare-doh']
+  stamp = 'sdns://AgMAAAAAAAAABzEuMS4xLjEAEmNsb3VkZmxhcmUtZG5zLmNvbQovZG5zLXF1ZXJ5'
+  # DoH, 9.9.9.9, dns.quad9.net, /dns-query
+  [static.'quad9-doh']
+  stamp = 'sdns://AgMAAAAAAAAABzkuOS45LjkADWRucy5xdWFkOS5uZXQKL2Rucy1xdWVyeQ'
+EOF
+    chmod 644 /etc/3xui-node/dnscrypt-proxy.toml
+    if ! /usr/sbin/dnscrypt-proxy -config /etc/3xui-node/dnscrypt-proxy.toml -check >/dev/null 2>&1; then
+        log_warn "Конфигурация dnscrypt-proxy не прошла проверку, переключаюсь на нативный DoT."
+        configure_dot
+        return 0
+    fi
+
+    cat <<'EOF' > /etc/systemd/system/3xui-node-doh.service
 [Unit]
-Description=Cloudflared local DNS-over-HTTPS proxy
+Description=Локальный DoH-прокси (dnscrypt-proxy, 127.0.0.1:5053)
 After=network-online.target
 Wants=network-online.target
+Before=nss-lookup.target
 
 [Service]
-Type=simple
-ExecStart=/usr/local/bin/cloudflared proxy-dns --address 127.0.0.1 --port 5053 --upstream https://1.1.1.1/dns-query --upstream https://9.9.9.9/dns-query
+ExecStart=/usr/sbin/dnscrypt-proxy -config /etc/3xui-node/dnscrypt-proxy.toml
+User=_dnscrypt-proxy
 Restart=on-failure
 RestartSec=3
+CacheDirectory=dnscrypt-proxy
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable --now cloudflared-doh.service
-    sleep 2
+    systemctl enable --now 3xui-node-doh.service >/dev/null 2>&1 || true
 
-    if dig +short +time=3 @127.0.0.1 -p 5053 github.com >/dev/null 2>&1; then
+    # Прокси отвечает, когда дождётся хотя бы одного доступного сервера.
+    local i ok=false
+    for i in $(seq 1 15); do
+        if dig +short +time=2 +tries=1 @127.0.0.1 -p 5053 github.com 2>/dev/null | grep -q .; then ok=true; break; fi
+        sleep 1
+    done
+    if $ok; then
         mkdir -p /etc/systemd/resolved.conf.d
         cat <<'EOF' > /etc/systemd/resolved.conf.d/10-dot.conf
 [Resolve]
@@ -172,17 +236,18 @@ EOF
         systemctl restart systemd-resolved 2>/dev/null || true
         sleep 1
         if getent ahosts github.com >/dev/null 2>&1; then
-            log_ok "Системный DoH (cloudflared) активен."
+            log_ok "Системный DoH (dnscrypt-proxy) активен."
             return 0
         fi
     fi
 
     log_warn "Проверка DoH не пройдена — откат на нативный DoT."
     rm -f /etc/systemd/resolved.conf.d/10-dot.conf
-    systemctl disable --now cloudflared-doh.service 2>/dev/null || true
+    disable_doh_proxy
     configure_dot
 }
 
+remove_legacy_cloudflared
 case "${SYSTEM_DNS_MODE:-dot}" in
     dot) configure_dot ;;
     doh) configure_doh ;;

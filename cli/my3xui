@@ -280,8 +280,8 @@ clean_server() {
     [[ "$c1" == "YES" ]] || { echo "Отменено."; return; }
 
     export DEBIAN_FRONTEND=noninteractive
-    systemctl stop x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh antiscan-update.timer 2>/dev/null || true
-    systemctl disable x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh antiscan-restore.service antiscan-update.timer 2>/dev/null || true
+    systemctl stop x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh 3xui-node-doh antiscan-update.timer 2>/dev/null || true
+    systemctl disable x-ui nginx fail2ban crowdsec crowdsec-firewall-bouncer cloudflared-doh 3xui-node-doh antiscan-restore.service antiscan-update.timer 2>/dev/null || true
 
     [[ -x /usr/local/x-ui/x-ui ]] && printf "y\n" | /usr/local/x-ui/x-ui uninstall >/dev/null 2>&1 || true
     # Psiphon удаляет сам себя полностью (юниты, контейнер, образ, конфиг, CLI).
@@ -305,7 +305,7 @@ clean_server() {
            /etc/3xui-antiscan-allow.txt /etc/nftables.d/antiscan.nft /usr/local/sbin/update-antiscan.py \
            /usr/local/sbin/update-geo-mirror.sh /usr/local/bin/cloudflared \
            /etc/systemd/system/antiscan-* /etc/systemd/system/nginx.service.d /etc/systemd/system/x-ui.service.d \
-           /etc/systemd/system/cloudflared-doh.service /etc/systemd/resolved.conf.d/10-dot.conf \
+           /etc/systemd/system/cloudflared-doh.service /etc/systemd/system/3xui-node-doh.service /etc/systemd/resolved.conf.d/10-dot.conf \
            /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx /usr/share/keyrings/nginx-archive-keyring.gpg \
            /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh \
            /etc/sysctl.d/99-xray-custom.conf /etc/cron.d/update-geo-mirror /etc/update-motd.d/99-my3xui \
