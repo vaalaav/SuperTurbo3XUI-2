@@ -96,7 +96,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 │   └── xui_v311_post.py       # Настройки подписки (JSON, Happ/INCY)
 ├── modules/
 │   ├── 01_preflight.sh        # ОС, DoH-проверка DNS, мастер параметров
-│   ├── 02_system_tuning.sh    # nginx.org, BBR+fq, swap, DoT / опц. DoH
+│   ├── 02_system_tuning.sh    # nginx.org, BBR+fq, swap, DoT / опц. DoH (dnscrypt-proxy)
 │   ├── 03_security_stack.sh   # SSH (откат 180с), UFW, Fail2Ban, CrowdSec, nftables
 │   ├── 04_ssl_and_mask.sh     # Certbot ECDSA (webroot) + заглушка
 │   ├── 05_install_3xui.sh     # Установка/обновление 3x-ui, Reality + XHTTP + 1 клиент + Happ
@@ -245,7 +245,7 @@ journalctl -u vps-psiphon # журнал службы
 
 - Cloudflare WARP из проекта удалён. На нодах, установленных с режимом `warp` или `combo`, модуль 06 при следующем запуске переводит режим в `none` или `psiphon` и снимает маршруты WARP из шаблона Xray.
 
-- Официальный установщик 3x-ui создаёт собственный админ-токен `install` и сохраняет его в `/etc/x-ui/install-result.env` (права 600). Проект его не использует.
+- Системный DoH (пункт 3 мастера) — `dnscrypt-proxy` из репозитория дистрибутива на `127.0.0.1:5053` (служба `3xui-node-doh`) с серверами Cloudflare и Quad9. Прежний вариант на `cloudflared proxy-dns` с cloudflared 2026.2.0 не работал (команду убрали), и модуль 02 молча включал DoT; при повторном запуске модуль удаляет его. В CI DoH проверяется на Ubuntu 24.04; на Ubuntu 26.04 и Debian 12/13 — пока нет. Трафик VPN это не затрагивает: Xray резолвит имена своим DoH.
 
 <sub>[↑ К содержанию](#содержание)</sub>
 

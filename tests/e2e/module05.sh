@@ -4,7 +4,7 @@
 #   fresh       — чистая установка, повторный запуск, восстановление удалённого API-токена
 #   upgrade     — на сервере 3x-ui 3.10.2 с данными; модуль обновляет её с бэкапом и сохраняет данные
 #   no-ip-limit — IP Limit и зеркало geo выключены, пароль панели начинается с «-»
-#   traffic     — модули 02, 05, 07, 08 и реальный трафик через Reality и XHTTP по ссылкам подписки
+#   traffic     — модули 02 (DoH), 05, 07, 08 и реальный трафик через Reality и XHTTP по ссылкам подписки
 #   rollback    — сбой модуля 05 посреди настройки: база панели возвращается, ссылки прежние
 #   psiphon     — модуль 06 (с переводом устаревшего режима combo): настоящий туннель, маршруты Gemini в Xray
 set -euo pipefail
@@ -306,15 +306,29 @@ PY
 }
 
 scenario_traffic() {
-    step "модули 02 (без смены DNS), 04 (эмуляция: самоподписанный сертификат), 05, 07"
+    step "модули 02 (DoH через dnscrypt-proxy), 04 (эмуляция: самоподписанный сертификат), 05, 07"
     bash "${E2E}/fixture.sh" true
     # shellcheck source=lib/common.sh
     source "${REPO}/lib/common.sh"
     load_state
-    save_var SYSTEM_DNS_MODE keep
+    # Системный DoH: дальше весь сценарий (geo-файлы, трафик) резолвит через него.
+    save_var SYSTEM_DNS_MODE doh
     save_var MASK_TEMPLATE cloud-storage
     save_var REVERSE_PROXY_URL ""
+    # Служба прежних версий проекта (cloudflared proxy-dns) должна быть убрана модулем 02.
+    printf '[Service]\nExecStart=/usr/local/bin/cloudflared proxy-dns\n' > /etc/systemd/system/cloudflared-doh.service
+    install -m 755 /bin/true /usr/local/bin/cloudflared
     run_module 02_system_tuning
+    [[ ! -e /etc/systemd/system/cloudflared-doh.service && ! -e /usr/local/bin/cloudflared ]] \
+        || die "прежняя служба cloudflared-doh не удалена"
+    echo "  ok   прежняя служба cloudflared-doh удалена"
+    grep -aq "Системный DoH (dnscrypt-proxy) активен" "${LOG_DIR}/02_system_tuning.log" \
+        || die "DoH не включился — модуль 02 откатился на DoT"
+    systemctl is-active --quiet 3xui-node-doh.service || die "служба 3xui-node-doh не активна"
+    dig +short +time=3 @127.0.0.1 -p 5053 www.gstatic.com | grep -q . || die "DoH-прокси не отвечает на 127.0.0.1:5053"
+    resolvectl dns 2>/dev/null | grep -q '127.0.0.1:5053' || die "systemd-resolved не использует 127.0.0.1:5053"
+    if ss -tulpn | grep -q '127.0.2.1:53'; then die "пакетный сокет dnscrypt-proxy (127.0.2.1:53) не отключён"; fi
+    echo "  ok   DoH: dnscrypt-proxy отвечает на 127.0.0.1:5053, systemd-resolved идёт через него"
     emulate_module04
     run_module05 traffic-05
     run_module 07_nginx_config
