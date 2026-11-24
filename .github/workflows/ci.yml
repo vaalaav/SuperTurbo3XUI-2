@@ -86,14 +86,11 @@ jobs:
         env:
           SCENARIO: ${{ matrix.scenario }}
         run: sudo E2E_DISPOSABLE=1 E2E_LOG_DIR="$RUNNER_TEMP/e2e-logs" bash tests/e2e/module05.sh "$SCENARIO"
-      - name: Логи при падении
+      - name: Диагностика при падении
         if: failure()
+        # Учётные данные в логах — тестовые значения фикстуры, на этой машине больше ничего нет.
         run: |
-          sudo mkdir -p "$RUNNER_TEMP/e2e-logs"
-          sudo cp -f /var/log/3xui-node-install.log /var/log/3xui-node-xui-install.log "$RUNNER_TEMP/e2e-logs/" 2>/dev/null || true
-          sudo journalctl -u x-ui -n 300 --no-pager | sudo tee "$RUNNER_TEMP/e2e-logs/journal-x-ui.log" >/dev/null || true
-          sudo chmod -R a+r "$RUNNER_TEMP/e2e-logs"
-          tail -n 60 "$RUNNER_TEMP/e2e-logs/journal-x-ui.log" || true
+          sudo bash tests/e2e/diagnose.sh "$RUNNER_TEMP/e2e-logs"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -113,7 +110,7 @@ jobs:
       - name: nginx из nginx.org (как в модуле 02, с проверкой отпечатка ключа)
         env:
           # Отпечаток ключа подписи пакетов nginx, опубликованный на nginx.org/en/linux_packages.html.
-          NGINX_KEY_FPR: 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62
+          NGINX_KEY_FPR: 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 # gitleaks:allow — публичный отпечаток ключа, не секрет
         run: |
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/nginx_signing.key" https://nginx.org/keys/nginx_signing.key
           gpg --show-keys --with-colons "$RUNNER_TEMP/nginx_signing.key" | awk -F: '/^fpr/ {print $10}' | grep -qx "$NGINX_KEY_FPR"

@@ -15,17 +15,19 @@ LOG_DIR="${E2E_LOG_DIR:-/tmp/e2e-logs}"
 mkdir -p "$LOG_DIR"
 OLD_XUI_TAG="v3.10.2"
 
-step() { echo; echo "=== $*"; }
+step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 die()  { echo "ОШИБКА: $*" >&2; exit 1; }
 
 run_module05() {
     local name="$1"
+    echo "  ..   $(date -u +%H:%M:%S) модуль 05 (${name})"
     if ! bash "${REPO}/install.sh" --only 05_install_3xui >"${LOG_DIR}/${name}.log" 2>&1; then
         tail -n 40 "${LOG_DIR}/${name}.log" >&2
         [[ -f /var/log/3xui-node-xui-install.log ]] && tail -n 20 /var/log/3xui-node-xui-install.log >&2
         die "модуль 05 завершился с ошибкой (${name})"
     fi
-    sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/${name}.log" | grep -E '\[(OK|WARN|INFO)\]' | cut -c1-160 || true
+    echo "  ..   $(date -u +%H:%M:%S) модуль 05 (${name}) завершён"
+    sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/${name}.log" | grep -aE '\[(OK|WARN|INFO)\]' | cut -c1-160 || true
 }
 
 state_get() { grep "^$1=" /etc/3xui-node/state.env | cut -d= -f2-; }
