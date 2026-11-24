@@ -96,7 +96,11 @@ scenario_fresh() {
     bash "${E2E}/check.sh"
 }
 
-client_links() { panel_api "$1" /panel/api/clients/links/user1 | jq -r '.obj[]?' | sed 's/#.*//' | sort; }
+# Ссылки клиента для сравнения: без названия профиля; sid панель при каждой выдаче выбирает
+# случайно из shortIds инбаунда (3x-ui internal/sub/service.go), поэтому он заменяется на «*».
+client_links() {
+    panel_api "$1" /panel/api/clients/links/user1 | jq -r '.obj[]?' | sed -E 's/#.*//; s/([?&])sid=[^&]*/\1sid=*/' | sort
+}
 inbound_ids() { panel_api "$1" /panel/api/inbounds/list | jq -c '[.obj[] | {id, tag, port}] | sort_by(.id)'; }
 
 scenario_rollback() {
@@ -284,6 +288,23 @@ probe_link() {
     [[ -z "$label" ]] || echo "  ..   ${label}: ${res}"
 }
 
+# Две ссылки vless:// совпадают без учёта порядка параметров и названия профиля после «#».
+# sid панель выбирает случайно из shortIds инбаунда: он должен быть одним из SHORT_ID_1/SHORT_ID_2.
+same_link() {
+    SIDS="$(state_get SHORT_ID_1) $(state_get SHORT_ID_2)" python3 - "$1" "$2" <<'PY'
+import os, sys, urllib.parse as up
+a, b = (up.urlsplit(x.strip()) for x in sys.argv[1:3])
+sids = set(os.environ["SIDS"].split())
+def key(u):
+    q = dict(up.parse_qsl(u.query))
+    sid = q.pop("sid", None)
+    return (u.scheme, u.netloc, u.path, sorted(q.items()), sid is None or sid in sids)
+if key(a) != key(b) or not key(a)[-1]:
+    print(f"  ..   подписка: {sys.argv[1]}\n  ..   файл:     {sys.argv[2]}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 scenario_traffic() {
     step "модули 02 (без смены DNS), 04 (эмуляция: самоподписанный сертификат), 05, 07"
     bash "${E2E}/fixture.sh" true
@@ -330,12 +351,9 @@ scenario_traffic() {
     run_module 08_cli_and_audit
     local f=/root/vps-credentials.txt
     # Сравнение без названия профиля после «#»: оно может отличаться у подписки и панели.
-    if ! grep -qF "${reality%%#*}" "$f"; then
-        echo "  ..   подписка: ${reality}" >&2
-        echo "  ..   файл:     $(grep -a -A1 '^\[Reality\]' "$f" | tail -n 1)" >&2
-        die "в ${f} нет ссылки Reality из подписки"
-    fi
-    grep -qF "${xhttp%%#*}" "$f" || die "в ${f} нет ссылки XHTTP из подписки"
+    # Ссылки сравниваются по смыслу: sid панель выбирает случайно при каждой выдаче.
+    same_link "$reality" "$(grep -a -A1 '^\[Reality\]' "$f" | tail -n 1)" || die "в ${f} не та ссылка Reality, что в подписке"
+    same_link "$xhttp" "$(grep -a -A1 '^\[XHTTP\]' "$f" | tail -n 1)" || die "в ${f} не та ссылка XHTTP, что в подписке"
     [[ "$(stat -c %a "$f")" == 600 ]] || die "${f} не с правами 600"
     echo "  ok   ${f}: ссылки совпадают с подпиской, права 600"
     local audit
