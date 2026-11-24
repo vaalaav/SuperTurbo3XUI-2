@@ -68,9 +68,35 @@ LimitNOFILE=524288
 EOF
 systemctl daemon-reload
 
+# Дальше модуль меняет панель (настройки, инбаунды, клиента, шаблон Xray). Перед этим — копия базы
+# при остановленной панели (SQLite в режиме WAL), и при любой ошибке до конца настройки база
+# возвращается к ней: узел остаётся с прежними, рабочими ссылками, а не в промежуточном состоянии.
+systemctl stop x-ui 2>/dev/null || true
+XUI_DB_BACKUP=$(backup_path /etc/x-ui "x-ui-pre-setup")
+[[ -n "$XUI_DB_BACKUP" && -d "${XUI_DB_BACKUP}/x-ui" ]] || log_err "Не удалось сделать копию /etc/x-ui перед настройкой."
+# Хранятся пять последних копий перед настройкой.
+find "$BACKUP_ROOT" -maxdepth 1 -type d -name 'x-ui-pre-setup-*' | sort | head -n -5 | xargs -r rm -rf --
+log_info "Копия базы панели перед настройкой: ${XUI_DB_BACKUP}"
+
+rollback_xui_db() {
+    local rc=$?
+    trap - EXIT
+    (( rc != 0 )) || return 0
+    echo -e "${YELLOW}[WARN]${NC} Настройка 3x-ui прервана — возвращаю базу панели из ${XUI_DB_BACKUP}." >&2
+    systemctl stop x-ui 2>/dev/null || true
+    rm -rf /etc/x-ui
+    cp -a "${XUI_DB_BACKUP}/x-ui" /etc/x-ui
+    if systemctl restart x-ui && ( wait_xui_ready 60 ) 2>/dev/null; then
+        echo -e "${YELLOW}[WARN]${NC} Панель запущена с прежней конфигурацией; изменения этого запуска не применены." >&2
+    else
+        echo -e "${RED}[ERR]${NC} Панель не запустилась после отката — смотрите journalctl -u x-ui." >&2
+    fi
+    exit "$rc"
+}
+trap rollback_xui_db EXIT
+
 # Настройки панели через её CLI, а не прямой записью в SQLite: CLI знает схему текущей версии.
 # Панель слушает только loopback и без собственного TLS — снаружи она доступна через nginx.
-systemctl stop x-ui 2>/dev/null || true
 "$XUI_BIN" setting \
     -username "${PANEL_USER}" \
     -password "${PANEL_PASS}" \
@@ -82,6 +108,25 @@ systemctl stop x-ui 2>/dev/null || true
 systemctl enable x-ui >/dev/null 2>&1
 restart_xui
 ensure_xui_api_token
+
+# Официальный установщик оставляет admin-токен «install» и его копию с паролем панели в
+# /etc/x-ui/install-result.env. Проекту они не нужны: токен отзывается, файл удаляется.
+if [[ -f /etc/x-ui/install-result.env ]]; then
+    INSTALL_TOKEN_ID=$(curl -fsS --max-time 10 -X GET -H "Authorization: Bearer ${XUI_API_TOKEN}" \
+        "http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/panel/api/setting/apiTokens" 2>/dev/null \
+        | jq -r '.obj[]? | select(.name == "install") | .id' | head -n 1 || true)
+    if [[ -n "$INSTALL_TOKEN_ID" ]]; then
+        if curl -fsS --max-time 10 -X POST -H "Authorization: Bearer ${XUI_API_TOKEN}" \
+               -H 'Content-Type: application/json' -d '{"expectedScope":"admin"}' \
+               "http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/panel/api/setting/apiTokens/delete/${INSTALL_TOKEN_ID}" \
+               2>/dev/null | jq -e '.success == true' >/dev/null; then
+            log_ok "Установочный API-токен «install» отозван."
+        else
+            log_warn "Не удалось отозвать установочный API-токен «install» — удалите его в настройках панели."
+        fi
+    fi
+    rm -f /etc/x-ui/install-result.env
+fi
 
 # Все geo-файлы обновляются при каждой установке штатным механизмом панели (сверка с дайджестом
 # релиза, атомарная замена) — до настройки шаблона, чтобы его правила проверялись по свежим файлам.
@@ -95,13 +140,20 @@ log_ok "Geo-файлы 3x-ui обновлены."
 XRAY_BIN=$(find /usr/local/x-ui/bin -maxdepth 1 -name "xray-linux-*" -type f | head -n 1)
 [[ -n "$XRAY_BIN" ]] || log_err "Бинарник Xray не найден в /usr/local/x-ui/bin."
 
-KEY_OUT=$("$XRAY_BIN" x25519)
-REALITY_PRIV=$(echo "$KEY_OUT" | awk -F: '/Private/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')
-REALITY_PUB=$(echo "$KEY_OUT" | awk -F: '/Public|Password/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')
-[[ -n "$REALITY_PRIV" && -n "$REALITY_PUB" ]] || log_err "Не удалось сгенерировать ключи X25519."
-
-SHORT_ID_1=$(openssl rand -hex 4)
-SHORT_ID_2=$(openssl rand -hex 8)
+x25519_pub() { awk -F: '/Public|Password/ {gsub(/^[ \t]+/, "", $2); print $2; exit}'; }
+# Ключи Reality и shortId сохраняются между запусками: новые ключи сделали бы недействительными
+# все ранее выданные ссылки. Сохранённый ключ проверяется — открытый должен выводиться из закрытого.
+if [[ -n "${REALITY_PRIV:-}" && -n "${REALITY_PUB:-}" ]] \
+   && [[ "$("$XRAY_BIN" x25519 -i="$REALITY_PRIV" | x25519_pub)" == "$REALITY_PUB" ]]; then
+    log_info "Ключи Reality из state.env сохранены."
+else
+    KEY_OUT=$("$XRAY_BIN" x25519)
+    REALITY_PRIV=$(echo "$KEY_OUT" | awk -F: '/Private/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')
+    REALITY_PUB=$(echo "$KEY_OUT" | x25519_pub)
+    [[ -n "$REALITY_PRIV" && -n "$REALITY_PUB" ]] || log_err "Не удалось сгенерировать ключи X25519."
+fi
+[[ "${SHORT_ID_1:-}" =~ ^[0-9a-f]{8}$ ]] || SHORT_ID_1=$(openssl rand -hex 4)
+[[ "${SHORT_ID_2:-}" =~ ^[0-9a-f]{16}$ ]] || SHORT_ID_2=$(openssl rand -hex 8)
 
 save_var REALITY_PRIV "$REALITY_PRIV"
 save_var REALITY_PUB "$REALITY_PUB"
@@ -147,6 +199,7 @@ set -a; source /etc/3xui-node/state.env; set +a
 python3 "${BASE_DIR}/lib/xui_v311_post.py"
 # Модули после 05 сразу обращаются к API, поэтому модуль завершается только когда панель отвечает.
 restart_xui
+trap - EXIT   # настройка панели завершена — откат базы больше не нужен
 
 # Ежедневное обновление geo-файлов и зеркала для Happ (вместо прежнего cron модуля 04).
 sed "s|@BASE_DIR@|${BASE_DIR}|" "${BASE_DIR}/cli/3xui-node-geo-update" > /usr/local/sbin/3xui-node-geo-update

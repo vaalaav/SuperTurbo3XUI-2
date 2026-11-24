@@ -34,6 +34,9 @@ echo "  ..   токены панели: $(jq -r '[.obj[].name] | sort | join(","
 [[ "$(jq '[.obj[] | select(.name == "3xui-node")] | length' <<<"$tokens")" == 1 ]] && ok "ровно один токен 3xui-node" || bad "токенов 3xui-node не один"
 jq -e '[.obj[] | select(.name == "cli-fallback")] | length == 0' <<<"$tokens" >/dev/null \
     && ok "токен cli-fallback не создавался" || bad "есть токен cli-fallback (перевыпуск без имени)"
+jq -e '[.obj[] | select(.name == "install")] | length == 0' <<<"$tokens" >/dev/null \
+    && ok "установочный токен install отозван" || bad "остался установочный токен install"
+[[ ! -e /etc/x-ui/install-result.env ]] && ok "install-result.env удалён" || bad "остался /etc/x-ui/install-result.env с паролем и токеном"
 
 links=$(api /panel/api/clients/links/user1 | jq -r '.obj[]?')
 grep -q "^vless://${CLIENT_UUID}@${DOMAIN}:443?.*security=reality" <<<"$links" \

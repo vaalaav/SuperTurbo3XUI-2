@@ -92,7 +92,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 ├── lib/
 │   ├── common.sh              # Логи, state.env, бэкапы, SSH, версия 3x-ui, API-токен
 │   ├── xui_api.py             # Работа с 3x-ui >= 3.11.0 через REST API
-│   └── xui_v311_post.py       # Настройки подписки (JSON, Happ/INCY) и шаблон Xray
+│   ├── xray_client.py         # Проверка профиля по ссылке vless:// временным клиентом Xray
+│   └── xui_v311_post.py       # Настройки подписки (JSON, Happ/INCY)
 ├── modules/
 │   ├── 01_preflight.sh        # ОС, DoH-проверка DNS, мастер параметров
 │   ├── 02_system_tuning.sh    # nginx.org, BBR+fq, swap, DoT / опц. DoH
@@ -101,7 +102,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 │   ├── 05_install_3xui.sh     # Установка/обновление 3x-ui, Reality + XHTTP + 1 клиент + Happ
 │   ├── 06_ai_routing.sh       # Опциональный Psiphon для Gemini (vps-psiphon, закреплённая версия)
 │   ├── 07_nginx_config.sh     # Nginx 127.0.0.1:8443 proxy_protocol + HTTP/2 XHTTP
-│   └── 08_cli_and_audit.sh    # Установка my3xui, MOTD и сквозной E2E тест VPN
+│   └── 08_cli_and_audit.sh    # my3xui, MOTD, ссылки клиента из панели и сквозная проверка VPN
 ├── templates/sites/           # Автономные шаблоны заглушек (cloud-storage, status-hub, dev-docs)
 ├── cli/my3xui                 # Утилита администрирования
 └── cli/3xui-node-geo-update   # Обновление geo-файлов и зеркала (таймер systemd)
@@ -118,7 +119,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 my3xui                      # Интерактивное меню (адаптировано под мобильный Termius)
 my3xui info                 # CPU, RAM, Swap, NVMe/SSD/HDD, версии 3x-ui и Xray
 my3xui creds                # URL панели, логин, пароль, подписка и ссылки vless://
-my3xui audit                # Проверка портов, маскировки, TLS по IP и E2E тест VPN
+my3xui audit                # Порты, маскировка, TLS по IP и сквозная проверка Reality и XHTTP по ссылкам панели
 my3xui security             # Статус UFW, Fail2Ban, CrowdSec и счётчик antiscan
 my3xui ssh status           # Порт SSH, ключи Termius, статус парольной авторизации
 my3xui ssh add-key          # Добавить публичный ключ 2-го устройства Termius
@@ -141,13 +142,17 @@ my3xui clean                # Полная очистка сервера (с с�
 - Модуль `05_install_3xui` запускает официальный установщик 3x-ui того же релиза в неинтерактивном режиме: логин, пароль, порт и путь панели передаются из `state.env`, TLS панели выключен (его терминирует Nginx), база — SQLite.
 - Если 3x-ui уже стоит и версия ≥ 3.11.0, установщик не запускается — обновляется только конфигурация.
 - Если стоит версия ниже 3.11.0, панель останавливается, `/etc/x-ui` копируется в `/root/3xui-node-backups/x-ui-db-<дата>`, затем панель обновляется. Клиенты и инбаунды сохраняются.
+- Перед настройкой панели модуль копирует `/etc/x-ui` в `/root/3xui-node-backups/x-ui-pre-setup-<дата>` (хранятся пять последних). Если настройка прервётся (например, Xray не запустится с новой конфигурацией), база вернётся к копии и панель запустится с прежними, рабочими ссылками.
+- Ключи Reality и shortId выпускаются один раз и при повторных запусках берутся из `state.env`, поэтому выданные ссылки остаются действительными.
 
 <sub>[↑ К содержанию](#содержание)</sub>
 
 
 ## API-токен панели
 
-Модули 05 и 06 обращаются к панели по именованному токену `3xui-node`. Он выпускается один раз, хранится в `/etc/3xui-node/state.env` (права 600) как `XUI_API_TOKEN` и переиспользуется. Если токен удалить в панели, следующий запуск модуля выпустит новый с тем же именем — токены не накапливаются.
+Модули 05, 06 и 08 и `my3xui audit` обращаются к панели по именованному токену `3xui-node`. Он выпускается один раз, хранится в `/etc/3xui-node/state.env` (права 600) как `XUI_API_TOKEN` и переиспользуется. Если токен удалить в панели, следующий запуск модуля выпустит новый с тем же именем — токены не накапливаются.
+
+Официальный установщик 3x-ui создаёт свой admin-токен `install` и записывает его вместе с паролем панели в `/etc/x-ui/install-result.env`. Модуль 05 отзывает этот токен и удаляет файл.
 
 <sub>[↑ К содержанию](#содержание)</sub>
 
@@ -255,13 +260,13 @@ journalctl -u vps-psiphon # журнал службы
 | Линтеры | shellcheck (0 предупреждений), ruff (`ruff.toml`), actionlint | `bash tests/lint.sh` |
 | Секреты | gitleaks по всей истории и рабочему дереву | — |
 | Модульные тесты | `tests/unit/`: проверка ссылок панели, шаблон Xray на базе встроенного, проверка geo-правил, маршруты Psiphon, перенос AI-маршрутов, вход в API (токен → пароль), `version_ge`, `save_var` со спецсимволами | `bash tests/unit.sh` |
-| Модуль 05 на чистой машине | официальный установщик 3x-ui на раннере с systemd; сценарии `fresh` (установка, повтор, восстановление токена), `upgrade` (с 3.10.2 с сохранением данных), `no-ip-limit`, `psiphon` (модуль 06 с настоящим туннелем) | см. ниже |
+| Модуль 05 на чистой машине | официальный установщик 3x-ui на раннере с systemd; сценарии `fresh` (установка, повтор, восстановление токена), `upgrade` (с 3.10.2 с сохранением данных), `no-ip-limit`, `psiphon` (модуль 06 с настоящим туннелем), `traffic` (модули 02, 05, 07 с самоподписанным сертификатом; подписка через 443, трафик через Reality и XHTTP клиентом Xray, блокировка РФ, чужой UUID, счётчики панели, ссылки модуля 08 и `my3xui audit`), `rollback` (сбой Xray посреди настройки: база панели возвращается, ссылки прежние) | см. ниже |
 | Конфигурация nginx | рендер модуля 07 и `nginx -t` на nginx.org stable | см. ниже |
 
 Сквозные тесты **переустанавливают 3x-ui и перезаписывают системные файлы**, поэтому запускаются только на одноразовой машине и без `E2E_DISPOSABLE=1` отказываются работать:
 
 ```bash
-sudo E2E_DISPOSABLE=1 bash tests/e2e/module05.sh fresh      # или upgrade, no-ip-limit, psiphon
+sudo E2E_DISPOSABLE=1 bash tests/e2e/module05.sh fresh      # или upgrade, no-ip-limit, psiphon, traffic, rollback
 sudo E2E_DISPOSABLE=1 bash tests/nginx/check_config.sh      # нужен nginx >= 1.25.1
 ```
 

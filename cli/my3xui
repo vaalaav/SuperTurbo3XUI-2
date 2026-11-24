@@ -6,7 +6,8 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 STATE_FILE="/etc/3xui-node/state.env"
-INSTALL_DIR="/opt/3xui-node"
+INSTALL_DIR="@BASE_DIR@"   # модуль 08 подставляет каталог установки
+[[ "$INSTALL_DIR" == @* ]] && INSTALL_DIR="/opt/3xui-node"   # запуск из репозитория без установки
 INFO_FILE="/root/vps-credentials.txt"
 
 [[ $EUID -eq 0 ]] || { echo -e "${RED}Запустите от root: sudo my3xui${NC}"; exit 1; }
@@ -126,40 +127,52 @@ run_audit() {
         fi
     fi
 
-    local xray_bin
-    xray_bin=$(find /usr/local/x-ui/bin -maxdepth 1 -name "xray-linux-*" -type f 2>/dev/null | head -n 1 || true)
-    if [[ -n "$xray_bin" && -n "${CLIENT_UUID:-}" && -n "${REALITY_PUB:-}" && -n "${DOMAIN:-}" ]]; then
-        local tmp_cfg="/tmp/xray-e2e-test.json"
-        cat <<EOF > "$tmp_cfg"
-{
-  "log": {"loglevel": "none"},
-  "inbounds": [{"listen": "127.0.0.1", "port": 10899, "protocol": "socks", "settings": {"udp": false}}],
-  "outbounds": [{
-    "protocol": "vless",
-    "settings": {"vnext": [{"address": "127.0.0.1", "port": 443, "users": [{"id": "${CLIENT_UUID}", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
-    "streamSettings": {
-      "network": "tcp",
-      "security": "reality",
-      "realitySettings": {"serverName": "${DOMAIN}", "fingerprint": "${UTLS_FP:-firefox}", "publicKey": "${REALITY_PUB}", "shortId": "${SHORT_ID_1}", "spiderX": "/"}
-    }
-  }]
-}
-EOF
-        "$xray_bin" run -config "$tmp_cfg" >/dev/null 2>&1 &
-        local pid=$!
-        sleep 1.5
-        local exit_ip
-        exit_ip=$(curl -4fsSL --max-time 8 --socks5-hostname 127.0.0.1:10899 https://api.ipify.org 2>/dev/null || true)
-        kill "$pid" 2>/dev/null || true
-        wait "$pid" 2>/dev/null || true
-        rm -f "$tmp_cfg"
-        if [[ "$exit_ip" == "${SERVER_IP:-}" ]]; then
-            echo -e "  ${ok} E2E тест Reality VPN пройден (exit IP: ${exit_ip})"
-        else
-            echo -e "  ${bad} E2E тест VPN не прошёл (получен IP: ${exit_ip:-нет})"
-        fi
-    fi
+    vpn_probe
     echo ""
+}
+
+# Сквозная проверка VPN: временный клиент Xray по каждой ссылке user1 из панели подключается
+# к 443 этого сервера так же, как клиент из подписки, и делает запрос наружу.
+vpn_probe() {
+    local ok="${GREEN}[OK]${NC}" bad="${RED}[FAIL]${NC}" warn="${YELLOW}[WARN]${NC}"
+    local xray_bin links link name res exit_ip
+    xray_bin=$(find /usr/local/x-ui/bin -maxdepth 1 -name "xray-linux-*" -type f 2>/dev/null | head -n 1 || true)
+    if [[ -z "$xray_bin" || -z "${DOMAIN:-}" ]]; then
+        echo -e "  ${bad} Сквозная проверка VPN невозможна: нет Xray или домена в state.env"
+        return 0
+    fi
+    # Подоболочка: log_err из common.sh завершает её, а не весь аудит.
+    # shellcheck disable=SC1091
+    if ! links=$(set +e; source "${INSTALL_DIR}/lib/common.sh" && load_state \
+            && ensure_xui_api_token >/dev/null 2>&1 \
+            && python3 "${INSTALL_DIR}/lib/xui_api.py" client-links --email=user1 \
+                --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
+                --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" 2>/dev/null); then
+        echo -e "  ${bad} Панель не отдала ссылки клиента user1 — сквозная проверка VPN пропущена"
+        return 0
+    fi
+    while IFS= read -r link; do
+        [[ -n "$link" ]] || continue
+        case "$link" in
+            *type=xhttp*) name="XHTTP (443 → nginx → Xray)" ;;
+            *security=reality*) name="Reality" ;;
+            *) name="${link%%\?*}" ;;
+        esac
+        # Сертификат закрепляется по файлу nginx: проверяется, что ответил именно этот сервер.
+        res=$(python3 "${INSTALL_DIR}/lib/xray_client.py" probe --xray "$xray_bin" --link="$link" \
+              --url https://api.ipify.org --resolve "${DOMAIN}:127.0.0.1" \
+              --pin-cert-file "/etc/nginx/ssl/${DOMAIN}/fullchain.pem" --timeout 15 2>&1 || true)
+        if [[ "$(jq -r '.ok // false' <<<"$res" 2>/dev/null)" == "true" ]]; then
+            exit_ip=$(jq -r '.body' <<<"$res")
+            if [[ "$exit_ip" == "${SERVER_IP:-}" ]]; then
+                echo -e "  ${ok} VPN ${name}: трафик проходит (внешний IP ${exit_ip})"
+            else
+                echo -e "  ${warn} VPN ${name}: трафик проходит, но внешний IP ${exit_ip:-?} ≠ ${SERVER_IP:-?} (NAT у провайдера?)"
+            fi
+        else
+            echo -e "  ${bad} VPN ${name}: трафик не проходит — $(jq -r '.error // empty' <<<"$res" 2>/dev/null || echo "$res")"
+        fi
+    done <<<"$links"
 }
 
 ssh_manage() {
