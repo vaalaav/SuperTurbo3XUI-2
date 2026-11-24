@@ -195,7 +195,8 @@ EOF
             local old_p="${SSH_PORT:-22}"
             read -erp "Новый порт SSH (1024-39999): " new_p
             [[ "$new_p" =~ ^[0-9]+$ ]] && (( new_p >= 1024 && new_p <= 39999 )) || { echo -e "${RED}Некорректный порт.${NC}"; return 1; }
-            local bak="/root/ssh-bak-$(date +%s)"
+            local bak
+            bak="/root/ssh-bak-$(date +%s)"
             cp -a /etc/ssh "$bak"
             sed -i -E "s/^Port .*/Port ${new_p}/" /etc/ssh/sshd_config.d/00-custom-ssh.conf 2>/dev/null || echo "Port ${new_p}" > /etc/ssh/sshd_config.d/00-custom-ssh.conf
             sshd -t || { cp -a "${bak}/." /etc/ssh/; echo -e "${RED}Ошибка sshd -t.${NC}"; return 1; }
