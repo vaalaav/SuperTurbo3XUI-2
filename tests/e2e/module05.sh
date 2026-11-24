@@ -4,7 +4,7 @@
 #   fresh       — чистая установка, повторный запуск, восстановление удалённого API-токена
 #   upgrade     — на сервере 3x-ui 3.10.2 с данными; модуль обновляет её с бэкапом и сохраняет данные
 #   no-ip-limit — IP Limit и зеркало geo выключены, пароль панели начинается с «-»
-#   psiphon     — модуль 06 в режиме psiphon: настоящий туннель, маршруты Gemini в Xray
+#   psiphon     — модуль 06 (с переводом устаревшего режима combo): настоящий туннель, маршруты Gemini в Xray
 set -euo pipefail
 
 [[ "${E2E_DISPOSABLE:-}" == "1" ]] || { echo "Только для одноразовой машины: задайте E2E_DISPOSABLE=1." >&2; exit 2; }
@@ -135,7 +135,8 @@ scenario_psiphon() {
     run_module05 psiphon-05
     # shellcheck source=lib/common.sh
     source "${REPO}/lib/common.sh"
-    save_var AI_MODE psiphon
+    # Нода, установленная до удаления WARP, с режимом combo: модуль 06 должен перевести её на psiphon.
+    save_var AI_MODE combo
     save_var PSIPHON_REGION ""
     save_var PSIPHON_PORT 1080
     save_var PSIPHON_IP_DETECT false
@@ -155,6 +156,8 @@ scenario_psiphon() {
     grep -qx 'BULK_TEST_MB=0' /etc/default/vps-psiphon \
         || die "замер скорости Psiphon не отключён: $(grep '^BULK_TEST_MB=' /etc/default/vps-psiphon || echo 'BULK_TEST_MB не задан')"
     echo "  ok   замер скорости докачкой отключён (BULK_TEST_MB=0)"
+    [[ "$(state_get AI_MODE)" == psiphon ]] || die "устаревший режим combo не переведён в psiphon (AI_MODE=$(state_get AI_MODE))"
+    echo "  ok   устаревший режим combo переведён в psiphon"
     [[ "$(state_get PSIPHON_STATUS)" == ok ]] || die "PSIPHON_STATUS=$(state_get PSIPHON_STATUS), ожидался ok"
     systemctl is-active --quiet vps-psiphon || die "служба vps-psiphon не активна"
     local direct_ip tunnel_ip

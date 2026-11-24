@@ -76,8 +76,13 @@ class VerifyClientLinksTest(unittest.TestCase):
 class MergeCustomIntoBaseTest(unittest.TestCase):
     """Перенос пользовательских маршрутов (AI-модуль) в свежий базовый шаблон."""
 
-    WARP = {"tag": "warp", "protocol": "wireguard", "settings": {}}
-    WARP_RULE = {"type": "field", "outboundTag": "warp", "domain": ["geosite:openai"]}
+    PSIPHON = {"tag": "psiphon-out", "protocol": "socks", "settings": {"address": "127.0.0.1", "port": 1080}}
+    PSIPHON_RULE = {
+        "type": "field",
+        "network": "tcp",
+        "outboundTag": "psiphon-out",
+        "domain": ["geosite:google-deepmind"],
+    }
     GEMINI_UDP_BLOCK = {
         "type": "field",
         "network": "udp",
@@ -90,16 +95,16 @@ class MergeCustomIntoBaseTest(unittest.TestCase):
 
     def current_with_ai(self) -> dict:
         cur = self.base()
-        cur["outbounds"].append(self.WARP)
-        cur["routing"]["rules"][1:1] = [self.WARP_RULE, self.GEMINI_UDP_BLOCK]
+        cur["outbounds"].append(self.PSIPHON)
+        cur["routing"]["rules"][1:1] = [self.GEMINI_UDP_BLOCK, self.PSIPHON_RULE]
         return cur
 
     def test_keeps_ai_outbound_and_rules_right_after_api_rule(self) -> None:
         merged = xui_api.merge_custom_into_base(self.base(), self.current_with_ai())
-        self.assertIn("warp", [o["tag"] for o in merged["outbounds"]])
+        self.assertIn("psiphon-out", [o["tag"] for o in merged["outbounds"]])
         rules = merged["routing"]["rules"]
         self.assertEqual(rules[0]["outboundTag"], "api")
-        self.assertEqual(rules[1:3], [self.WARP_RULE, self.GEMINI_UDP_BLOCK])
+        self.assertEqual(rules[1:3], [self.GEMINI_UDP_BLOCK, self.PSIPHON_RULE])
 
     def test_repeated_merge_is_idempotent(self) -> None:
         # Повторный запуск модуля 05 не должен дублировать ни базовые, ни пользовательские правила.
@@ -237,11 +242,6 @@ class ConfigureAiPsiphonTest(unittest.TestCase):
             panel_user="",
             panel_pass="",
             ai_mode=mode,
-            warp_priv_key="",
-            warp_peer_pub="",
-            warp_v4="",
-            warp_v6="",
-            warp_reserved="",
             psiphon_port="1080",
             psiphon_ip_detect=ip_detect,
         )
@@ -282,6 +282,28 @@ class ConfigureAiPsiphonTest(unittest.TestCase):
                 if "geosite:google-deepmind" in (r.get("domain") or [])
             ]
         )
+
+    def test_leftover_warp_routes_from_older_installs_are_removed(self) -> None:
+        # WARP удалён из проекта; на нодах, установленных раньше, его аутбаунд и правило остались в шаблоне.
+        FakeXrayPanel.template["outbounds"].append({"tag": "warp", "protocol": "wireguard", "settings": {}})
+        FakeXrayPanel.template["routing"]["rules"].insert(
+            1, {"type": "field", "outboundTag": "warp", "domain": ["geosite:openai"]}
+        )
+        for mode in ("none", "psiphon"):
+            with self.subTest(mode=mode):
+                self.run_configure(mode)
+                tpl = FakeXrayPanel.template
+                self.assertFalse([o for o in tpl["outbounds"] if o["tag"] == "warp"])
+                self.assertFalse([r for r in tpl["routing"]["rules"] if r.get("outboundTag") == "warp"])
+
+    def test_removed_modes_are_rejected(self) -> None:
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            orig = sys.argv
+            try:
+                sys.argv = ["xui_api.py", "configure-ai", "--ai-mode=warp"]
+                xui_api.main()
+            finally:
+                sys.argv = orig
 
     def test_unknown_geodata_category_is_rejected_before_saving(self) -> None:
         FakeXrayPanel.known.discard("geosite:google-deepmind")

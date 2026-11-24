@@ -39,7 +39,7 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/main/bootstrap.sh)
 ```
 
-Мастер задаст вопросы (домен, SSH, DNS, заглушка, защита, AI-модуль, подписка) и покажет сводку перед установкой. Аргументы после `bootstrap.sh` передаются в `install.sh`, например:
+Мастер задаст вопросы (домен, SSH, DNS, заглушка, защита, Psiphon для Gemini, подписка) и покажет сводку перед установкой. Аргументы после `bootstrap.sh` передаются в `install.sh`, например:
 
 ```bash
 # Зафиксировать другую версию 3x-ui (не ниже v3.11.0)
@@ -74,7 +74,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
   - `UFW`, `Fail2Ban` (`ssh.service` + `nginx-botsearch`), опциональный `CrowdSec`.
   - Опциональный **лимит устройств на клиента** (IP Limit 3x-ui, jail `3x-ipl`) — вопрос в мастере, по умолчанию включён.
   - Автоматическая блокировка исходящего трафика с VPS в РФ (`blackhole`).
-- **Опциональный AI-модуль:** встроенный **Cloudflare WARP**, **Psiphon** для Gemini (через [vps-psiphon](https://github.com/Chara-Freedom/vps-psiphon), SOCKS5 только на `127.0.0.1:1080`, UDP/QUIC Gemini блокируется) или комбинированный режим. Маршруты добавляются, только если выход реально работает — см. [Psiphon](#psiphon).
+- **Опциональный выход для Gemini через Psiphon** (через [vps-psiphon](https://github.com/Chara-Freedom/vps-psiphon), SOCKS5 только на `127.0.0.1:1080`, UDP/QUIC Gemini блокируется). Маршруты добавляются, только если выход реально работает — см. [Psiphon](#psiphon).
 - **Подписка для Happ и INCY:** опциональный профиль `RU напрямую / мир через VPN` (`Happ Routing`) и локальное зеркало `geoip.dat` / `geosite.dat` на Nginx, которое обновляется вместе с geo-файлами панели — см. [Geo-файлы](#geo-файлы).
 - **Панель 3x-ui только на `127.0.0.1`, без собственного TLS** — снаружи она доступна через Nginx по секретному пути. Проект работает с панелью через её REST API по постоянному токену `3xui-node` (хранится в `state.env`).
 - **Удобный SSH под два устройства Termius:** интерактивная смена порта (миграция `ssh.socket` → `ssh.service`) с таймером автоотката на 180 сек, добавление нескольких ключей и отложенное отключение пароля через `my3xui ssh`.
@@ -99,7 +99,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 │   ├── 03_security_stack.sh   # SSH (откат 180с), UFW, Fail2Ban, CrowdSec, nftables
 │   ├── 04_ssl_and_mask.sh     # Certbot ECDSA (webroot) + заглушка
 │   ├── 05_install_3xui.sh     # Установка/обновление 3x-ui, Reality + XHTTP + 1 клиент + Happ
-│   ├── 06_ai_routing.sh       # Опциональный WARP / Psiphon (vps-psiphon, закреплённая версия)
+│   ├── 06_ai_routing.sh       # Опциональный Psiphon для Gemini (vps-psiphon, закреплённая версия)
 │   ├── 07_nginx_config.sh     # Nginx 127.0.0.1:8443 proxy_protocol + HTTP/2 XHTTP
 │   └── 08_cli_and_audit.sh    # Установка my3xui, MOTD и сквозной E2E тест VPN
 ├── templates/sites/           # Автономные шаблоны заглушек (cloud-storage, status-hub, dev-docs)
@@ -184,7 +184,7 @@ journalctl -u 3xui-node-geo-update -n 30           # результат посл
 
 ## Psiphon
 
-Режим `psiphon` (или `combo`) AI-модуля направляет Gemini через выход Psiphon: TCP-трафик `geosite:google-deepmind` — в аутбаунд `psiphon-out`, UDP/QUIC Gemini блокируется (локальный прокси Psiphon UDP не поддерживает). По желанию туда же идут сервисы определения IP (`geosite:category-ip-geo-detect`).
+Режим `psiphon` AI-модуля направляет Gemini через выход Psiphon: TCP-трафик `geosite:google-deepmind` — в аутбаунд `psiphon-out`, UDP/QUIC Gemini блокируется (локальный прокси Psiphon UDP не поддерживает). По желанию туда же идут сервисы определения IP (`geosite:category-ip-geo-detect`).
 
 Модуль 06:
 
@@ -238,8 +238,9 @@ journalctl -u vps-psiphon # журнал службы
 
 ## Известные ограничения
 
+- Cloudflare WARP из проекта удалён. На нодах, установленных с режимом `warp` или `combo`, модуль 06 при следующем запуске переводит режим в `none` или `psiphon` и снимает маршруты WARP из шаблона Xray.
+
 - Официальный установщик 3x-ui создаёт собственный админ-токен `install` и сохраняет его в `/etc/x-ui/install-result.env` (права 600). Проект его не использует.
-- Если регистрация WARP в модуле 06 не удалась, маршруты WARP не добавляются; итог модуля перечисляет выходы, которые реально применены.
 
 <sub>[↑ К содержанию](#содержание)</sub>
 

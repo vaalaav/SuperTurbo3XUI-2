@@ -106,7 +106,7 @@ run_audit() {
     fi
 
     # Psiphon проверяется по факту: запрос через его SOCKS5 должен выйти не с IP сервера.
-    if [[ "${AI_MODE:-none}" == "psiphon" || "${AI_MODE:-none}" == "combo" ]]; then
+    if [[ "${AI_MODE:-none}" == "psiphon" ]]; then
         local pip
         pip=$(curl -4 -fsS --max-time 15 --socks5-hostname "127.0.0.1:${PSIPHON_PORT:-1080}" https://api.ipify.org 2>/dev/null || true)
         if [[ -n "$pip" && "$pip" != "${SERVER_IP:-}" ]]; then

@@ -195,23 +195,19 @@ ENABLE_CROWDSEC=$([[ "$EN_CS" =~ ^[Yy]$ ]] && echo "true" || echo "false")
 read -erp "   Лимит устройств на клиента (IP Limit 3x-ui через Fail2ban)? [Y/n]: " EN_IPL
 ENABLE_IP_LIMIT=$([[ "${EN_IPL:-Y}" =~ ^[Nn]$ ]] && echo "false" || echo "true")
 
-# 10. Модуль вывода AI-сервисов (WARP / Psiphon)
-echo -e "\n10. Модуль вывода AI-сервисов (ChatGPT/Gemini/Claude):"
+# 10. Выход для Gemini через Psiphon
+echo -e "\n10. Выход для Gemini через Psiphon:"
 echo "    [1] Выключен (трафик через IP VPS)"
-echo "    [2] Встроенный Cloudflare WARP (0 МБ лишней RAM)"
-echo "    [3] Psiphon в Docker (оптимально для Gemini)"
-echo "    [4] Комбинированный (Gemini -> Psiphon, прочее -> WARP)"
+echo "    [2] Psiphon в Docker (vps-psiphon)"
 read -erp "    Выбор [1]: " AI_CHOICE
 PSIPHON_REGION="DE"
 PSIPHON_IP_DETECT="false"
 case "${AI_CHOICE:-1}" in
-    2) AI_MODE="warp" ;;
-    3) AI_MODE="psiphon" ;;
-    4) AI_MODE="combo" ;;
+    2) AI_MODE="psiphon" ;;
     *) AI_MODE="none" ;;
 esac
 
-if [[ "$AI_MODE" == "psiphon" || "$AI_MODE" == "combo" ]]; then
+if [[ "$AI_MODE" == "psiphon" ]]; then
     read -erp "    Регион Psiphon (DE/NL/GB/US) [DE]: " PSIPHON_REGION
     PSIPHON_REGION=${PSIPHON_REGION:-"DE"}
     read -erp "    Пускать IP-чекеры (ip-geo-detect) через Psiphon? [y/N]: " PIPD

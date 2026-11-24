@@ -616,6 +616,8 @@ def cmd_configure_ai(args):
     outbounds = tpl.setdefault("outbounds", [])
     rules = tpl.setdefault("routing", {}).setdefault("rules", [])
 
+    # Перед применением снимаются прежние AI-маршруты, включая WARP, удалённый из проекта:
+    # на нодах, установленных раньше, он мог остаться в шаблоне.
     outbounds = [o for o in outbounds if o.get("tag") not in ("warp", "psiphon-out")]
     rules = [
         r
@@ -630,46 +632,7 @@ def cmd_configure_ai(args):
 
     insert_idx = 1 if rules and rules[0].get("outboundTag") == "api" else 0
 
-    if args.ai_mode in ("warp", "combo") and args.warp_priv_key:
-        warp_outbound = {
-            "tag": "warp",
-            "protocol": "wireguard",
-            # Как во встроенном WARP панели 3.11: эндпоинт резолвится с предпочтением IPv4,
-            # иначе на VPS с неполным IPv6 handshake молча теряется.
-            "streamSettings": {"sockopt": {"domainStrategy": "ForceIPv4v6"}},
-            "targetStrategy": "ForceIPv4v6",
-            "settings": {
-                "secretKey": args.warp_priv_key,
-                "address": [args.warp_v4, args.warp_v6],
-                "peers": [
-                    {
-                        "publicKey": args.warp_peer_pub,
-                        "endpoint": "engage.cloudflareclient.com:2408",
-                    }
-                ],
-                "reserved": [int(x) for x in args.warp_reserved.split(",") if x.strip()],
-                "mtu": 1280,
-                # Пользовательский TUN. Поля kernelMode у WireGuard-аутбаунда Xray нет; по умолчанию
-                # берётся kernel TUN, которому нужны CAP_NET_ADMIN и рабочий IPv6, — иначе Xray не стартует.
-                "noKernelTun": True,
-            },
-        }
-        outbounds.append(warp_outbound)
-
-        warp_domains = ["geosite:openai", "geosite:anthropic", "geosite:netflix", "geosite:meta"]
-        if args.ai_mode == "warp":
-            warp_domains.append("geosite:google-deepmind")
-        rules.insert(
-            insert_idx,
-            {
-                "type": "field",
-                "outboundTag": "warp",
-                "domain": warp_domains,
-            },
-        )
-        insert_idx += 1
-
-    if args.ai_mode in ("psiphon", "combo"):
+    if args.ai_mode == "psiphon":
         # Современная форма socks-аутбаунда (address/port); массив servers — наследие V2Ray.
         # vps-psiphon публикует SOCKS5 на 127.0.0.1 (--bind-loopback). UDP туда не направляется:
         # локальный прокси Psiphon его не поддерживает.
@@ -710,7 +673,7 @@ def cmd_configure_ai(args):
     api.update_xray_template(tpl)
     api.restart_xray()
     api.wait_xray_running()
-    applied = [o["tag"] for o in outbounds if o.get("tag") in ("warp", "psiphon-out")]
+    applied = [o["tag"] for o in outbounds if o.get("tag") == "psiphon-out"]
     print(json.dumps({"status": "ok", "ai_mode": args.ai_mode, "applied": applied}))
 
 
@@ -739,12 +702,9 @@ def main():
         p1.add_argument(f"--{name}", default="")
 
     p2 = sub.add_parser("configure-ai")
-    for name in (
-        "panel-port", "panel-path", "panel-user", "panel-pass",
-        "ai-mode", "warp-priv-key", "warp-peer-pub", "warp-v4", "warp-v6",
-        "warp-reserved", "psiphon-port", "psiphon-ip-detect",
-    ):
+    for name in ("panel-port", "panel-path", "panel-user", "panel-pass", "psiphon-port", "psiphon-ip-detect"):
         p2.add_argument(f"--{name}", default="")
+    p2.add_argument("--ai-mode", choices=("none", "psiphon"), default="none")
 
     p3 = sub.add_parser("update-geo")
     for name in ("panel-port", "panel-path", "panel-user", "panel-pass"):
