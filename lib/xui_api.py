@@ -687,6 +687,16 @@ def cmd_update_geo(args):
     print(json.dumps({"status": "ok", "msg": res.get("msg", "")}, ensure_ascii=False))
 
 
+def cmd_client_links(args):
+    """Печатает ссылки клиента так, как их отдаёт панель (по одной в строке)."""
+    api = XuiApiClient(args.panel_port, args.panel_path, args.panel_user, args.panel_pass)
+    api.login()
+    links = [str(x) for x in api.client_links(args.email) if str(x).startswith("vless://")]
+    if not links:
+        raise RuntimeError(f"Панель не вернула ссылок для клиента {args.email}")
+    print("\n".join(links))
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -710,8 +720,15 @@ def main():
     for name in ("panel-port", "panel-path", "panel-user", "panel-pass"):
         p3.add_argument(f"--{name}", default="")
 
+    p4 = sub.add_parser("client-links")
+    for name in ("panel-port", "panel-path", "panel-user", "panel-pass"):
+        p4.add_argument(f"--{name}", default="")
+    p4.add_argument("--email", default="user1")
+
     args = parser.parse_args()
-    if args.cmd == "setup-node":
+    if args.cmd == "client-links":
+        cmd_client_links(args)
+    elif args.cmd == "setup-node":
         cmd_setup_node(args)
     elif args.cmd == "configure-ai":
         cmd_configure_ai(args)

@@ -4,7 +4,8 @@
 #   fresh       — чистая установка, повторный запуск, восстановление удалённого API-токена
 #   upgrade     — на сервере 3x-ui 3.10.2 с данными; модуль обновляет её с бэкапом и сохраняет данные
 #   no-ip-limit — IP Limit и зеркало geo выключены, пароль панели начинается с «-»
-#   traffic     — модули 02, 05, 07 и реальный трафик через Reality и XHTTP по ссылкам подписки
+#   traffic     — модули 02, 05, 07, 08 и реальный трафик через Reality и XHTTP по ссылкам подписки
+#   rollback    — сбой модуля 05 посреди настройки: база панели возвращается, ссылки прежние
 #   psiphon     — модуль 06 (с переводом устаревшего режима combo): настоящий туннель, маршруты Gemini в Xray
 set -euo pipefail
 
@@ -62,22 +63,28 @@ scenario_fresh() {
     systemctl is-failed --quiet 3xui-node-geo-update.service && die "юнит 3xui-node-geo-update в состоянии failed"
     echo "  ok   обновление geo-файлов по таймеру отработало"
 
-    step "повторный запуск: установщик не запускается, токен прежний"
-    local tok1 mtime1
+    step "повторный запуск: установщик не запускается, токен, ключи Reality и ссылки прежние"
+    local tok1 mtime1 pub1 links1
     tok1=$(state_get XUI_API_TOKEN)
+    pub1=$(state_get REALITY_PUB)
+    links1=$(client_links "$tok1")
     mtime1=$(stat -c %Y /var/log/3xui-node-xui-install.log)
     run_module05 rerun
+    [[ "$(state_get REALITY_PUB)" == "$pub1" ]] || die "ключи Reality сменились при повторном запуске"
+    [[ "$(client_links "$tok1")" == "$links1" ]] || die "ссылки клиента изменились при повторном запуске"
     grep -q "уже установлена" "${LOG_DIR}/rerun.log" || die "при повторном запуске модуль не распознал установленную 3x-ui"
     [[ "$(stat -c %Y /var/log/3xui-node-xui-install.log)" == "$mtime1" ]] || die "установщик запускался повторно"
     [[ "$(state_get XUI_API_TOKEN)" == "$tok1" ]] || die "токен перевыпущен без причины"
-    echo "  ok   установщик не запускался, токен прежний"
+    echo "  ok   установщик не запускался; токен, ключи Reality и ссылки прежние"
     bash "${E2E}/check.sh"
 
     step "токен 3xui-node удалён в панели: модуль выпускает новый с тем же именем"
-    local install_tok id
-    install_tok=$(grep '^XUI_API_TOKEN=' /etc/x-ui/install-result.env | cut -d= -f2-)
-    id=$(panel_api "$install_tok" /panel/api/setting/apiTokens | jq -r '.obj[] | select(.name == "3xui-node") | .id')
-    panel_api "$install_tok" "/panel/api/setting/apiTokens/delete/${id}" -X POST \
+    local admin_tok id
+    # Отдельный токен теста: установочный «install» модуль 05 уже отозвал.
+    admin_tok=$(/usr/local/x-ui/x-ui setting -getApiToken -tokenName e2e-admin | awk '/^apiToken:/ {print $2; exit}')
+    [[ -n "$admin_tok" ]] || die "не удалось выпустить тестовый токен"
+    id=$(panel_api "$admin_tok" /panel/api/setting/apiTokens | jq -r '.obj[] | select(.name == "3xui-node") | .id')
+    panel_api "$admin_tok" "/panel/api/setting/apiTokens/delete/${id}" -X POST \
         -H 'Content-Type: application/json' -d '{"expectedScope":"admin"}' | jq -e '.success' >/dev/null \
         || die "не удалось удалить токен через API"
     [[ "$(panel_api "$tok1" /panel/api/server/status -o /dev/null -w '%{http_code}')" == 401 ]] \
@@ -86,6 +93,55 @@ scenario_fresh() {
     grep -q "отклонён панелью" "${LOG_DIR}/token.log" || die "модуль не заметил отозванный токен"
     [[ "$(state_get XUI_API_TOKEN)" != "$tok1" ]] || die "в state.env остался отозванный токен"
     echo "  ok   выпущен и сохранён новый токен"
+    bash "${E2E}/check.sh"
+}
+
+client_links() { panel_api "$1" /panel/api/clients/links/user1 | jq -r '.obj[]?' | sed 's/#.*//' | sort; }
+inbound_ids() { panel_api "$1" /panel/api/inbounds/list | jq -c '[.obj[] | {id, tag, port}] | sort_by(.id)'; }
+
+scenario_rollback() {
+    step "исходная установка"
+    bash "${E2E}/fixture.sh" true
+    run_module05 rollback-base
+    local tok links0 ids0 new_uuid=99999999-2222-4333-8444-555555555555
+    tok=$(state_get XUI_API_TOKEN)
+    links0=$(client_links "$tok")
+    ids0=$(inbound_ids "$tok")
+    grep -q "$(state_get CLIENT_UUID)" <<<"$links0" || die "в исходных ссылках нет UUID из state.env"
+
+    step "сбой посреди настройки: в state.env новый UUID, порт 443 занят — Xray не запускается"
+    sed -i "s/^CLIENT_UUID=.*/CLIENT_UUID=${new_uuid}/" /etc/3xui-node/state.env
+    systemctl stop x-ui
+    python3 -c 'import socket, time
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("0.0.0.0", 443)); s.listen(); time.sleep(900)' &
+    local squat=$!
+    trap 'kill "$squat" 2>/dev/null || true' EXIT
+    for _ in $(seq 1 20); do ss -tln | grep -q ':443 ' && break; sleep 0.25; done
+    ss -tln | grep -q ':443 ' || die "не удалось занять порт 443"
+    if bash "${REPO}/install.sh" --only 05_install_3xui >"${LOG_DIR}/rollback-fail.log" 2>&1; then
+        die "модуль 05 завершился успешно, хотя Xray не мог занять 443"
+    fi
+    sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/rollback-fail.log" | grep -aE '\[(OK|WARN|ERR)\]|Error|Ошибка' | cut -c1-200 || true
+    grep -aq "Xray не запустился после применения конфигурации" "${LOG_DIR}/rollback-fail.log" \
+        || die "модуль упал не на запуске Xray — сценарий проверяет не то"
+    grep -aq "возвращаю базу панели" "${LOG_DIR}/rollback-fail.log" || die "отката базы не было"
+    echo "  ok   модуль 05 упал на запуске Xray и откатил базу"
+
+    step "после отката: панель работает, ссылки и инбаунды прежние"
+    [[ "$(panel_api "$tok" /panel/api/server/status -o /dev/null -w '%{http_code}')" == 200 ]] \
+        || die "панель не отвечает после отката"
+    [[ "$(client_links "$tok")" == "$links0" ]] || die "ссылки изменились несмотря на откат: $(client_links "$tok")"
+    [[ "$(inbound_ids "$tok")" == "$ids0" ]] || die "инбаунды пересозданы несмотря на откат: $(inbound_ids "$tok")"
+    grep -q "$new_uuid" <<<"$(client_links "$tok")" && die "в ссылках новый UUID — откат не сработал"
+    echo "  ok   панель отвечает; ссылки (старый UUID) и инбаунды не изменились"
+
+    step "контроль: порт свободен — тот же запуск проходит и применяет новый UUID"
+    kill "$squat"; wait "$squat" 2>/dev/null || true
+    trap - EXIT
+    run_module05 rollback-retry
+    grep -q "$new_uuid" <<<"$(client_links "$(state_get XUI_API_TOKEN)")" || die "новый UUID не применён после освобождения порта"
+    echo "  ok   повторный запуск применил новый UUID"
     bash "${E2E}/check.sh"
 }
 
@@ -213,9 +269,10 @@ emulate_module04() {
 
 xray_bin() { find /usr/local/x-ui/bin -maxdepth 1 -name 'xray-linux-*' -type f | head -n 1; }
 
-# Запрос через временный клиент Xray по ссылке; $1 — ссылка, $2 — URL, $3 — ожидание ok|fail.
+# Запрос через временный клиент Xray по ссылке; $1 — ссылка, $2 — URL, $3 — ожидание ok|fail,
+# $4 — подпись для вывода. Вызывается напрямую, не в $(…): die должен завершать весь сценарий.
 probe_link() {
-    local link="$1" url="$2" expect="$3" res pin
+    local link="$1" url="$2" expect="$3" label="${4:-}" res pin
     pin=$(openssl x509 -in "/etc/nginx/ssl/${DOMAIN}/fullchain.pem" -outform der | sha256sum | cut -d' ' -f1)
     res=$(python3 "${REPO}/lib/xray_client.py" probe --xray "$(xray_bin)" --link "$link" --url "$url" \
           --pin-sha256 "$pin" --resolve "${DOMAIN}:127.0.0.1" || true)
@@ -224,7 +281,7 @@ probe_link() {
     else
         [[ "$expect" == fail ]] || die "запрос ${url} через ${link%%\?*} не прошёл: ${res}"
     fi
-    echo "$res"
+    [[ -z "$label" ]] || echo "  ..   ${label}: ${res}"
 }
 
 scenario_traffic() {
@@ -255,31 +312,51 @@ scenario_traffic() {
     echo "  ok   подписка отдаёт ссылки Reality и XHTTP"
 
     step "трафик через оба транспорта"
-    echo "  ..   Reality: $(probe_link "$reality" https://www.gstatic.com/generate_204 ok)"
+    probe_link "$reality" https://www.gstatic.com/generate_204 ok "Reality"
     echo "  ok   Reality (443 → Xray) пропускает трафик"
-    echo "  ..   XHTTP: $(probe_link "$xhttp" https://www.gstatic.com/generate_204 ok)"
+    probe_link "$xhttp" https://www.gstatic.com/generate_204 ok "XHTTP"
     echo "  ok   XHTTP (443 → Reality → nginx HTTP/2 → Xray 11443) пропускает трафик"
 
     step "контроли"
     curl -fsS -o /dev/null --max-time 15 https://ya.ru || die "контроль: ya.ru недоступен напрямую с машины — проверка блокировки невозможна"
-    echo "  ..   РФ через Reality: $(probe_link "$reality" https://ya.ru fail)"
+    probe_link "$reality" https://ya.ru fail "РФ через Reality"
     echo "  ok   трафик в РФ блокируется (напрямую ya.ru доступен)"
     local bad_uuid="${reality/${CLIENT_UUID}/99999999-2222-4333-8444-555555555555}"
     [[ "$bad_uuid" != "$reality" ]] || die "в ссылке Reality нет UUID ${CLIENT_UUID}"
-    echo "  ..   чужой UUID: $(probe_link "$bad_uuid" https://www.gstatic.com/generate_204 fail)"
+    probe_link "$bad_uuid" https://www.gstatic.com/generate_204 fail "чужой UUID"
     echo "  ok   чужой UUID не пропускается"
 
+    step "модуль 08: ссылки в файле учётных данных и сквозная проверка my3xui audit"
+    run_module 08_cli_and_audit
+    local f=/root/vps-credentials.txt
+    # Сравнение без названия профиля после «#»: оно может отличаться у подписки и панели.
+    grep -qF "${reality%%#*}" "$f" || die "в ${f} нет ссылки Reality из подписки"
+    grep -qF "${xhttp%%#*}" "$f" || die "в ${f} нет ссылки XHTTP из подписки"
+    [[ "$(stat -c %a "$f")" == 600 ]] || die "${f} не с правами 600"
+    echo "  ok   ${f}: ссылки совпадают с подпиской, права 600"
+    local audit
+    audit=$(my3xui audit 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    grep -a 'VPN ' <<<"$audit" | sed 's/^/  ..   /'
+    grep -aq 'VPN Reality: трафик проходит' <<<"$audit" || die "my3xui audit: Reality не прошёл"
+    grep -aq 'VPN XHTTP.*: трафик проходит' <<<"$audit" || die "my3xui audit: XHTTP не прошёл"
+    if grep -aq 'трафик не проходит' <<<"$audit"; then die "my3xui audit сообщил об отказе VPN"; fi
+    echo "  ok   my3xui audit проверяет оба профиля по ссылкам панели"
+
     step "счётчики трафика панели"
-    # Панель собирает статистику Xray раз в ~10 с.
+    # Панель опрашивает статистику Xray каждые 5 с, и первый опрос после рестарта Xray только
+    # запоминает базовые значения (3x-ui internal/xray/api.go, GetTraffic): трафик, прошедший до него,
+    # не учитывается. Поэтому трафик генерируется заново на каждой попытке.
     local counters i
-    for i in $(seq 1 12); do
+    for i in $(seq 1 6); do
+        probe_link "$reality" https://www.gstatic.com/generate_204 ok >/dev/null
+        probe_link "$xhttp" https://www.gstatic.com/generate_204 ok >/dev/null
+        sleep 7
         counters=$(panel_api "$(state_get XUI_API_TOKEN)" /panel/api/inbounds/list | jq -c '[.obj[] | {tag, up, down}]')
         jq -e 'length == 2 and all(.up > 0 and .down > 0)' <<<"$counters" >/dev/null && break
-        sleep 5
     done
     echo "  ..   ${counters}"
     jq -e 'length == 2 and all(.up > 0 and .down > 0)' <<<"$counters" >/dev/null \
-        || die "панель не учла трафик на обоих инбаундах (ожидание ${i}×5 с)"
+        || die "панель не учла трафик на обоих инбаундах (${i} попыток)"
     echo "  ok   панель учла трафик на обоих инбаундах"
 }
 
@@ -289,6 +366,7 @@ case "${1:-}" in
     no-ip-limit) scenario_no_ip_limit ;;
     psiphon)     scenario_psiphon ;;
     traffic)     scenario_traffic ;;
-    *) echo "Сценарий: fresh | upgrade | no-ip-limit | psiphon | traffic" >&2; exit 2 ;;
+    rollback)    scenario_rollback ;;
+    *) echo "Сценарий: fresh | upgrade | no-ip-limit | psiphon | traffic | rollback" >&2; exit 2 ;;
 esac
 echo; echo "=== сценарий ${1} пройден"

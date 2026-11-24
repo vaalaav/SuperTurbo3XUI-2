@@ -19,6 +19,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 import xui_api  # noqa: E402
@@ -168,6 +169,7 @@ class FakeXrayPanel(BaseHTTPRequestHandler):
 
     template: ClassVar[dict] = {}
     known: ClassVar[set[str]] = set()
+    links: ClassVar[list[str]] = []
 
     def log_message(self, *args: object) -> None:
         pass
@@ -183,6 +185,8 @@ class FakeXrayPanel(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/p/panel/api/server/status":
             return self._send({"success": True, "obj": {"xray": {"state": "running"}}})
+        if self.path == "/p/panel/api/clients/links/user1":
+            return self._send({"success": True, "obj": self.links})
         self._send({"success": False, "msg": "404"})
 
     def do_POST(self) -> None:
@@ -311,6 +315,39 @@ class ConfigureAiPsiphonTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "geosite:google-deepmind"):
             self.run_configure("psiphon")
         self.assertEqual(FakeXrayPanel.template, before)
+
+
+class ClientLinksTest(unittest.TestCase):
+    """client-links: ссылки для файла учётных данных и `my3xui audit` берутся у панели как есть."""
+
+    server: ClassVar[HTTPServer]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.server = HTTPServer(("127.0.0.1", 0), FakeXrayPanel)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.server.shutdown()
+
+    def run_links(self) -> str:
+        args = argparse.Namespace(
+            panel_port=str(self.server.server_port), panel_path="p", panel_user="", panel_pass="", email="user1"
+        )
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"XUI_API_TOKEN": "t"}), contextlib.redirect_stdout(out):
+            xui_api.cmd_client_links(args)
+        return out.getvalue()
+
+    def test_prints_panel_links_one_per_line(self) -> None:
+        FakeXrayPanel.links = [GOOD_REALITY, GOOD_XHTTP]
+        self.assertEqual(self.run_links().splitlines(), [GOOD_REALITY, GOOD_XHTTP])
+
+    def test_no_links_is_an_error(self) -> None:
+        FakeXrayPanel.links = []
+        with self.assertRaisesRegex(RuntimeError, "не вернула ссылок"):
+            self.run_links()
 
 
 class FakePanel(BaseHTTPRequestHandler):

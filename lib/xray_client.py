@@ -7,17 +7,21 @@
     xray_client.py probe --xray /usr/local/x-ui/bin/xray-linux-amd64 --link 'vless://…' \\
         --url https://www.gstatic.com/generate_204 [--pin-sha256 HEX] [--resolve HOST:IP]
 
-Печатает JSON {"ok": bool, "http_code": str, "error": str} и завершается с кодом 0 только при ok.
---pin-sha256 закрепляет сертификат TLS сервера (нужно для самоподписанного сертификата в тестах).
+Печатает JSON {"ok": bool, "http_code": str, "body": str (до 200 символов), "error": str}
+и завершается с кодом 0 только при ok.
+--pin-sha256 или --pin-cert-file закрепляют сертификат TLS сервера: проверяется, что ответил именно
+nginx узла (и самоподписанный сертификат в тестах принимается).
 --resolve подменяет адрес сервера из ссылки, не трогая SNI и Host (как curl --resolve).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -106,25 +110,42 @@ def probe(xray: str, link: str, url: str, pinned_sha256: str = "", address: str 
             with open(log_path, "w", encoding="utf-8") as log:
                 proc = subprocess.Popen([xray, "run", "-c", cfg_path], stdout=log, stderr=subprocess.STDOUT)  # noqa: S603
         except OSError as e:
-            return {"ok": False, "http_code": "000", "error": f"не удалось запустить {xray}: {e}"}
+            return {"ok": False, "http_code": "000", "body": "", "error": f"не удалось запустить {xray}: {e}"}
         try:
             if not wait_port(port, 10):
                 with open(log_path, encoding="utf-8", errors="replace") as log:
-                    return {"ok": False, "http_code": "000", "error": "клиент Xray не запустился: " + log.read()[-300:]}
+                    err = "клиент Xray не запустился: " + log.read()[-300:]
+                    return {"ok": False, "http_code": "000", "body": "", "error": err}
             # Без переменных прокси окружения: запрос должен идти только через проверяемый туннель.
             env = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
-            curl = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", str(timeout)]
+            body_path = os.path.join(tmp, "body")
+            curl = ["curl", "-sS", "-o", body_path, "-w", "%{http_code}", "--max-time", str(timeout)]
             curl += ["--socks5-hostname", f"127.0.0.1:{port}", url]
             res = subprocess.run(curl, capture_output=True, text=True, env=env, check=False)  # noqa: S603
             code = res.stdout.strip() or "000"
+            # Любой HTTP-ответ означает, что запрос прошёл туннель; код ответа сайта не оценивается.
             ok = res.returncode == 0 and code not in ("000", "")
-            return {"ok": ok, "http_code": code, "error": "" if ok else res.stderr.strip()[-200:]}
+            body = ""
+            if os.path.exists(body_path):
+                with open(body_path, encoding="utf-8", errors="replace") as f:
+                    body = f.read(200).strip()
+            return {"ok": ok, "http_code": code, "body": body, "error": "" if ok else res.stderr.strip()[-200:]}
         finally:
             proc.terminate()
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+
+
+def cert_sha256(path: str) -> str:
+    """SHA-256 первого (листового) сертификата PEM-файла в DER — значение для pinnedPeerCertSha256."""
+    with open(path, encoding="ascii") as f:
+        pem = f.read()
+    end = "-----END CERTIFICATE-----"
+    if end not in pem:
+        raise ValueError(f"В {path} нет сертификата PEM")
+    return hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem[: pem.index(end) + len(end)])).hexdigest()
 
 
 def main() -> int:
@@ -134,7 +155,9 @@ def main() -> int:
     p.add_argument("--xray", required=True)
     p.add_argument("--link", required=True)
     p.add_argument("--url", required=True)
-    p.add_argument("--pin-sha256", default="")
+    pin = p.add_mutually_exclusive_group()
+    pin.add_argument("--pin-sha256", default="")
+    pin.add_argument("--pin-cert-file", default="", help="закрепить листовой сертификат из PEM-файла")
     p.add_argument("--resolve", default="", help="HOST:IP — подключаться к IP вместо адреса из ссылки")
     p.add_argument("--timeout", type=int, default=20)
     args = parser.parse_args()
@@ -144,7 +167,8 @@ def main() -> int:
         if not host or not ip:
             parser.error("--resolve ожидает HOST:IP")
         address = ip if parse_vless(args.link)[0].hostname == host else ""
-    result = probe(args.xray, args.link, args.url, args.pin_sha256, address, args.timeout)
+    pin_sha256 = cert_sha256(args.pin_cert_file) if args.pin_cert_file else args.pin_sha256
+    result = probe(args.xray, args.link, args.url, pin_sha256, address, args.timeout)
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["ok"] else 1
 

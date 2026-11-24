@@ -6,9 +6,14 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
+import shutil
+import ssl
+import subprocess
 import sys
+import tempfile
 import unittest
 import urllib.parse
 from pathlib import Path
@@ -99,6 +104,25 @@ class BuildClientConfigTest(unittest.TestCase):
         for bad in ("vmess://abc", "vless://host-only", f"vless://{UUID}@{DOMAIN}?type=tcp", ""):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 xray_client.build_client_config(bad, 10808)
+
+
+class CertSha256Test(unittest.TestCase):
+    def test_matches_openssl_der_digest_of_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            key, crt = Path(tmp, "k.pem"), Path(tmp, "c.pem")
+            openssl = shutil.which("openssl") or "/usr/bin/openssl"
+            for cn, out in (("leaf", crt), ("ca", Path(tmp, "ca.pem"))):
+                cmd = [openssl, "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"]
+                cmd += ["-days", "1", "-subj", f"/CN={cn}", "-keyout", str(key), "-out", str(out)]
+                subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
+            leaf = crt.read_text()
+            # fullchain.pem: листовой сертификат, затем промежуточный — закрепляется листовой.
+            crt.write_text(leaf + Path(tmp, "ca.pem").read_text())
+            want = hashlib.sha256(ssl.PEM_cert_to_DER_cert(leaf)).hexdigest()
+            self.assertEqual(xray_client.cert_sha256(str(crt)), want)
+            key.write_text("no cert here")
+            with self.assertRaises(ValueError):
+                xray_client.cert_sha256(str(key))
 
 
 class ProbeTest(unittest.TestCase):
