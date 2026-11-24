@@ -10,6 +10,7 @@ import http.cookiejar
 import json
 import os
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -155,10 +156,12 @@ class XuiApiClient:
         return self._req("GET", f"/panel/api/clients/links/{urllib.parse.quote(email, safe='')}").get("obj") or []
 
     def restart_xray(self):
+        # Ошибку не пробрасываем: итог рестарта проверяет wait_xray_running по состоянию Xray,
+        # но и молча её не теряем.
         try:
             self._req("POST", "/panel/api/server/restartXrayService", {})
-        except Exception:
-            pass
+        except RuntimeError as e:
+            print(f"Предупреждение: запрос рестарта Xray не прошёл: {e}", file=sys.stderr)
 
     def wait_xray_running(self, timeout: float = 30.0, settle: float = 3.0, stable_polls: int = 4):
         """Убеждается, что Xray устойчиво работает после рестарта.
@@ -203,7 +206,7 @@ def detect_country_label(server_ip: str) -> str:
                 if len(code) == 2 and code.isalpha():
                     flag = "".join(chr(0x1F1E6 + ord(ch) - ord("A")) for ch in code)
                     return f"{flag} {names_ru.get(code, d.get('country', code))}"
-    except Exception:
+    except Exception:  # noqa: S110, BLE001 — подпись страны декоративная: при любой ошибке берётся «🌐 Node»
         pass
     return "🌐 Node"
 
