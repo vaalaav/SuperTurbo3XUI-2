@@ -147,7 +147,11 @@ scenario_psiphon() {
     echo "  ..   $(date -u +%H:%M:%S) модуль 06 завершён"
     sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/psiphon-06.log" | grep -aE '\[(OK|WARN|INFO)\]' | cut -c1-160 || true
 
-    echo "  ..   образ контейнера: $(docker inspect --format '{{.Image}}' vps-psiphon 2>/dev/null) ($(docker image inspect --format '{{index .RepoDigests 0}}' "$(docker inspect --format '{{.Config.Image}}' vps-psiphon)" 2>/dev/null))"
+    local pinned running
+    pinned=$(sed -n 's/^PSIPHON_IMAGE="\(.*\)"$/\1/p' "${REPO}/modules/06_ai_routing.sh")
+    running=$(docker inspect --format '{{.Config.Image}}' vps-psiphon 2>/dev/null || true)
+    [[ -n "$pinned" && "$running" == "$pinned" ]] || die "контейнер запущен из «${running}», а закреплён «${pinned}»"
+    echo "  ok   контейнер запущен из закреплённого образа ${pinned}"
     [[ "$(state_get PSIPHON_STATUS)" == ok ]] || die "PSIPHON_STATUS=$(state_get PSIPHON_STATUS), ожидался ok"
     systemctl is-active --quiet vps-psiphon || die "служба vps-psiphon не активна"
     local direct_ip tunnel_ip

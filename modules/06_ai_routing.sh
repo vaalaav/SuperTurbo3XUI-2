@@ -90,7 +90,8 @@ fi
 # по digest. Обновление — сменить три значения ниже после проверки новой версии.
 PSIPHON_INSTALLER_COMMIT="a42966845ecc5b477d14962b9ddf5c284dbc1bcd"   # vps-psiphon 1.3, 2026-11-10
 PSIPHON_INSTALLER_SHA256="1428beeaab91de159e5354308a8b30948ca6c406bfa37a5d5298071e0f6319d2"
-PSIPHON_IMAGE="swarupsengupta2007/psiphon:latest"
+# Образ собирается из исходников psiphon-tunnel-core (swarupsengupta2007/psiphon-docker); digest на 2026-11-24.
+PSIPHON_IMAGE="swarupsengupta2007/psiphon@sha256:ed678abc7145e0fb550eb889a5dfed74bd8495bca16b958d6b7ac582d869bfe6"
 PSIPHON_INSTALL_LOG="/var/log/3xui-node-psiphon-install.log"
 PSIPHON_OK=false
 
