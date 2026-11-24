@@ -117,18 +117,18 @@ fi
 log_info "Интеграция AI-маршрутов (${AI_MODE}) в 3x-ui..."
 ensure_xui_api_token
 python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
-    --panel-port "${PANEL_PORT}" \
-    --panel-path "${PANEL_PATH}" \
-    --panel-user "${PANEL_USER}" \
-    --panel-pass "${PANEL_PASS}" \
-    --ai-mode "${AI_MODE}" \
-    --warp-priv-key "${WARP_PRIV}" \
-    --warp-peer-pub "${WARP_PEER_PUB}" \
-    --warp-v4 "${WARP_V4}" \
-    --warp-v6 "${WARP_V6}" \
-    --warp-reserved "${WARP_RESERVED}" \
-    --psiphon-port "${PSIPHON_PORT}" \
-    --psiphon-ip-detect "${PSIPHON_IP_DETECT}" >/dev/null
+    --panel-port="${PANEL_PORT}" \
+    --panel-path="${PANEL_PATH}" \
+    --panel-user="${PANEL_USER}" \
+    --panel-pass="${PANEL_PASS}" \
+    --ai-mode="${AI_MODE}" \
+    --warp-priv-key="${WARP_PRIV}" \
+    --warp-peer-pub="${WARP_PEER_PUB}" \
+    --warp-v4="${WARP_V4}" \
+    --warp-v6="${WARP_V6}" \
+    --warp-reserved="${WARP_RESERVED}" \
+    --psiphon-port="${PSIPHON_PORT}" \
+    --psiphon-ip-detect="${PSIPHON_IP_DETECT}" >/dev/null
 
 systemctl restart x-ui
 sleep 2

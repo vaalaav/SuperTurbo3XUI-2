@@ -119,25 +119,25 @@ save_var SHORT_ID_2 "$SHORT_ID_2"
 
 log_info "Настройка инбаундов, клиента и роутинга через REST API 3x-ui..."
 API_RES=$(python3 "${BASE_DIR}/lib/xui_api.py" setup-node \
-    --panel-port "${PANEL_PORT}" \
-    --panel-path "${PANEL_PATH}" \
-    --panel-user "${PANEL_USER}" \
-    --panel-pass "${PANEL_PASS}" \
-    --sub-port "${SUB_PORT}" \
-    --sub-path "${SUB_PATH}" \
-    --domain "${DOMAIN}" \
-    --server-ip "${SERVER_IP}" \
-    --reality-priv "${REALITY_PRIV}" \
-    --reality-pub "${REALITY_PUB}" \
-    --utls-fp "${UTLS_FP}" \
-    --xhttp-path "${XHTTP_PATH}" \
-    --client-uuid "${CLIENT_UUID}" \
-    --sub-id "${SUB_ID}" \
-    --short-id-1 "${SHORT_ID_1}" \
-    --short-id-2 "${SHORT_ID_2}" \
-    --enable-happ "${ENABLE_HAPP}" \
-    --enable-geo-mirror "${ENABLE_GEO_MIRROR}" \
-    --geo-path "${GEO_PATH}")
+    --panel-port="${PANEL_PORT}" \
+    --panel-path="${PANEL_PATH}" \
+    --panel-user="${PANEL_USER}" \
+    --panel-pass="${PANEL_PASS}" \
+    --sub-port="${SUB_PORT}" \
+    --sub-path="${SUB_PATH}" \
+    --domain="${DOMAIN}" \
+    --server-ip="${SERVER_IP}" \
+    --reality-priv="${REALITY_PRIV}" \
+    --reality-pub="${REALITY_PUB}" \
+    --utls-fp="${UTLS_FP}" \
+    --xhttp-path="${XHTTP_PATH}" \
+    --client-uuid="${CLIENT_UUID}" \
+    --sub-id="${SUB_ID}" \
+    --short-id-1="${SHORT_ID_1}" \
+    --short-id-2="${SHORT_ID_2}" \
+    --enable-happ="${ENABLE_HAPP}" \
+    --enable-geo-mirror="${ENABLE_GEO_MIRROR}" \
+    --geo-path="${GEO_PATH}")
 
 log_ok "API 3x-ui: ${API_RES}"
 HAPP_URI=$(echo "$API_RES" | jq -r '.happ_uri // ""' 2>/dev/null || true)
