@@ -326,7 +326,10 @@ scenario_traffic() {
         || die "DoH не включился — модуль 02 откатился на DoT"
     systemctl is-active --quiet 3xui-node-doh.service || die "служба 3xui-node-doh не активна"
     dig +short +time=3 @127.0.0.1 -p 5053 www.gstatic.com | grep -q . || die "DoH-прокси не отвечает на 127.0.0.1:5053"
-    resolvectl dns 2>/dev/null | grep -q '127.0.0.1:5053' || die "systemd-resolved не использует 127.0.0.1:5053"
+    if ! resolvectl dns 2>/dev/null | grep -q '127.0.0.1:5053'; then
+        resolvectl status 2>&1 | head -30 >&2; ls -la /etc/systemd/resolved.conf.d/ >&2; cat /etc/systemd/resolved.conf.d/*.conf >&2
+        die "systemd-resolved не использует 127.0.0.1:5053"
+    fi
     if ss -tulpn | grep -q '127.0.2.1:53'; then die "пакетный сокет dnscrypt-proxy (127.0.2.1:53) не отключён"; fi
     echo "  ok   DoH: dnscrypt-proxy отвечает на 127.0.0.1:5053, systemd-resolved идёт через него"
     emulate_module04
