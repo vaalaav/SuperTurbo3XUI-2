@@ -130,6 +130,5 @@ python3 "${BASE_DIR}/lib/xui_api.py" configure-ai \
     --psiphon-port="${PSIPHON_PORT}" \
     --psiphon-ip-detect="${PSIPHON_IP_DETECT}" >/dev/null
 
-systemctl restart x-ui
-sleep 2
+restart_xui
 log_ok "AI-маршрутизация (${AI_MODE}) применена."

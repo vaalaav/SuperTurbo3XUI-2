@@ -307,6 +307,5 @@ fi
 
 systemctl enable --now nginx >/dev/null 2>&1
 systemctl restart nginx
-systemctl restart x-ui
-sleep 2
+restart_xui
 log_ok "Nginx (127.0.0.1:8443) и Xray/3x-ui (0.0.0.0:443) запущены."

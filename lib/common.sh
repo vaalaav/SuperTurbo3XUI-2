@@ -173,3 +173,24 @@ ensure_xui_api_token() {
     save_var XUI_API_TOKEN "$tok"
     export XUI_API_TOKEN="$tok"
 }
+
+# Ждёт, пока панель начнёт отвечать по HTTP на 127.0.0.1. `systemctl restart` для unit с Type=simple
+# возвращается сразу после запуска процесса, а слушать порт панель начинает примерно через секунду:
+# следующий шаг или модуль, обратившийся к API в этот момент, получал «соединение отклонено».
+wait_xui_ready() {
+    local timeout="${1:-30}" code=""
+    local tries=$(( timeout * 2 ))
+    for (( i = 0; i < tries; i++ )); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 \
+            "http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/" 2>/dev/null || true)
+        [[ -n "$code" && "$code" != "000" ]] && return 0
+        sleep 0.5
+    done
+    log_err "Панель 3x-ui не ответила на 127.0.0.1:${PANEL_PORT} за ${timeout} с — смотрите journalctl -u x-ui."
+}
+
+# Перезапуск панели с ожиданием готовности.
+restart_xui() {
+    systemctl restart x-ui
+    wait_xui_ready "${1:-30}"
+}

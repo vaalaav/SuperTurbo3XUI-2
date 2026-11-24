@@ -86,19 +86,8 @@ systemctl stop x-ui 2>/dev/null || true
 "$XUI_BIN" setting -listenIP 127.0.0.1 >/dev/null
 "$XUI_BIN" cert -reset >/dev/null
 
-systemctl enable --now x-ui >/dev/null 2>&1
-systemctl restart x-ui
-
-PANEL_UP=false
-for _ in $(seq 1 40); do
-    if ss -tln | grep -q "127.0.0.1:${PANEL_PORT}\b"; then
-        PANEL_UP=true
-        break
-    fi
-    sleep 0.5
-done
-$PANEL_UP || log_err "Панель 3x-ui не начала слушать 127.0.0.1:${PANEL_PORT} — проверьте journalctl -u x-ui."
-sleep 1
+systemctl enable x-ui >/dev/null 2>&1
+restart_xui
 ensure_xui_api_token
 
 XRAY_BIN=$(find /usr/local/x-ui/bin -maxdepth 1 -name "xray-linux-*" -type f | head -n 1)
@@ -142,8 +131,7 @@ API_RES=$(python3 "${BASE_DIR}/lib/xui_api.py" setup-node \
 log_ok "API 3x-ui: ${API_RES}"
 HAPP_URI=$(echo "$API_RES" | jq -r '.happ_uri // ""' 2>/dev/null || true)
 [[ -n "$HAPP_URI" ]] && save_var HAPP_URI "$HAPP_URI"
-systemctl restart x-ui
-sleep 2
+restart_xui
 
 if [[ -f /usr/local/x-ui/bin/config.json ]]; then
     if "$XRAY_BIN" run -test -config /usr/local/x-ui/bin/config.json >/dev/null 2>&1; then
@@ -155,4 +143,5 @@ fi
 
 set -a; source /etc/3xui-node/state.env; set +a
 python3 "${BASE_DIR}/lib/xui_v311_post.py"
-systemctl restart x-ui
+# Модули после 05 сразу обращаются к API, поэтому модуль завершается только когда панель отвечает.
+restart_xui
