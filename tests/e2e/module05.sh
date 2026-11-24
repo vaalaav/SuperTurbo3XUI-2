@@ -4,6 +4,7 @@
 #   fresh       — чистая установка, повторный запуск, восстановление удалённого API-токена
 #   upgrade     — на сервере 3x-ui 3.10.2 с данными; модуль обновляет её с бэкапом и сохраняет данные
 #   no-ip-limit — IP Limit и зеркало geo выключены, пароль панели начинается с «-»
+#   traffic     — модули 02, 05, 07 и реальный трафик через Reality и XHTTP по ссылкам подписки
 #   psiphon     — модуль 06 (с переводом устаревшего режима combo): настоящий туннель, маршруты Gemini в Xray
 set -euo pipefail
 
@@ -18,6 +19,16 @@ OLD_XUI_TAG="v3.10.2"
 
 step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 die()  { echo "ОШИБКА: $*" >&2; exit 1; }
+
+run_module() {
+    local mod="$1"
+    echo "  ..   $(date -u +%H:%M:%S) модуль ${mod}"
+    if ! bash "${REPO}/install.sh" --only "$mod" >"${LOG_DIR}/${mod}.log" 2>&1; then
+        tail -n 40 "${LOG_DIR}/${mod}.log" >&2
+        die "модуль ${mod} завершился с ошибкой"
+    fi
+    sed 's/\x1b\[[0-9;]*m//g' "${LOG_DIR}/${mod}.log" | grep -aE '\[(OK|WARN)\]' | cut -c1-160 || true
+}
 
 run_module05() {
     local name="$1"
@@ -189,11 +200,95 @@ scenario_psiphon() {
     bash "${E2E}/check.sh"
 }
 
+# Результат модуля 04 без Let's Encrypt: самоподписанный сертификат домена и сайт-заглушка.
+emulate_module04() {
+    mkdir -p "/etc/nginx/ssl/${DOMAIN}" /var/www/html /var/www/masksite /var/cache/nginx/html_cache /etc/nginx/conf.d/node-ext
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 -subj "/CN=${DOMAIN}" \
+        -addext "subjectAltName=DNS:${DOMAIN}" \
+        -keyout "/etc/nginx/ssl/${DOMAIN}/privkey.pem" -out "/etc/nginx/ssl/${DOMAIN}/fullchain.pem" 2>/dev/null
+    echo '<!doctype html><title>mask</title><h1>mask-site</h1>' > /var/www/masksite/index.html
+    echo '<!doctype html><title>404</title>' > /var/www/html/404.html
+    chown -R www-data:www-data /var/www /var/cache/nginx
+}
+
+xray_bin() { find /usr/local/x-ui/bin -maxdepth 1 -name 'xray-linux-*' -type f | head -n 1; }
+
+# Запрос через временный клиент Xray по ссылке; $1 — ссылка, $2 — URL, $3 — ожидание ok|fail.
+probe_link() {
+    local link="$1" url="$2" expect="$3" res pin
+    pin=$(openssl x509 -in "/etc/nginx/ssl/${DOMAIN}/fullchain.pem" -outform der | sha256sum | cut -d' ' -f1)
+    res=$(python3 "${REPO}/lib/xray_client.py" probe --xray "$(xray_bin)" --link "$link" --url "$url" \
+          --pin-sha256 "$pin" --resolve "${DOMAIN}:127.0.0.1" || true)
+    if [[ "$(jq -r .ok <<<"$res")" == "true" ]]; then
+        [[ "$expect" == ok ]] || die "запрос ${url} прошёл, хотя должен был быть заблокирован: ${res}"
+    else
+        [[ "$expect" == fail ]] || die "запрос ${url} через ${link%%\?*} не прошёл: ${res}"
+    fi
+    echo "$res"
+}
+
+scenario_traffic() {
+    step "модули 02 (без смены DNS), 04 (эмуляция: самоподписанный сертификат), 05, 07"
+    bash "${E2E}/fixture.sh" true
+    # shellcheck source=lib/common.sh
+    source "${REPO}/lib/common.sh"
+    load_state
+    save_var SYSTEM_DNS_MODE keep
+    save_var MASK_TEMPLATE cloud-storage
+    save_var REVERSE_PROXY_URL ""
+    run_module 02_system_tuning
+    emulate_module04
+    run_module05 traffic-05
+    run_module 07_nginx_config
+    grep -q "^127.0.0.1 ${DOMAIN}\$" /etc/hosts || echo "127.0.0.1 ${DOMAIN}" >> /etc/hosts
+
+    step "подписка, как её получает клиент: 443 → Reality → nginx → сервер подписки"
+    load_state
+    local sub links reality xhttp
+    sub=$(curl -fsS --max-time 15 --cacert "/etc/nginx/ssl/${DOMAIN}/fullchain.pem" \
+          --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/${SUB_PATH}/${SUB_ID}") || die "подписка недоступна через 443"
+    # Подписка 3x-ui по умолчанию в base64; если шифрование подписки выключено — открытым текстом.
+    links=$(base64 -d <<<"$sub" 2>/dev/null) || links="$sub"
+    reality=$(grep -m1 'type=tcp' <<<"$links" || true)
+    xhttp=$(grep -m1 'type=xhttp' <<<"$links" || true)
+    [[ -n "$reality" && -n "$xhttp" ]] || die "в подписке нет обеих ссылок: ${links}"
+    echo "  ok   подписка отдаёт ссылки Reality и XHTTP"
+
+    step "трафик через оба транспорта"
+    echo "  ..   Reality: $(probe_link "$reality" https://www.gstatic.com/generate_204 ok)"
+    echo "  ok   Reality (443 → Xray) пропускает трафик"
+    echo "  ..   XHTTP: $(probe_link "$xhttp" https://www.gstatic.com/generate_204 ok)"
+    echo "  ok   XHTTP (443 → Reality → nginx HTTP/2 → Xray 11443) пропускает трафик"
+
+    step "контроли"
+    curl -fsS -o /dev/null --max-time 15 https://ya.ru || die "контроль: ya.ru недоступен напрямую с машины — проверка блокировки невозможна"
+    echo "  ..   РФ через Reality: $(probe_link "$reality" https://ya.ru fail)"
+    echo "  ok   трафик в РФ блокируется (напрямую ya.ru доступен)"
+    local bad_uuid="${reality/${CLIENT_UUID}/99999999-2222-4333-8444-555555555555}"
+    [[ "$bad_uuid" != "$reality" ]] || die "в ссылке Reality нет UUID ${CLIENT_UUID}"
+    echo "  ..   чужой UUID: $(probe_link "$bad_uuid" https://www.gstatic.com/generate_204 fail)"
+    echo "  ok   чужой UUID не пропускается"
+
+    step "счётчики трафика панели"
+    # Панель собирает статистику Xray раз в ~10 с.
+    local counters i
+    for i in $(seq 1 12); do
+        counters=$(panel_api "$(state_get XUI_API_TOKEN)" /panel/api/inbounds/list | jq -c '[.obj[] | {tag, up, down}]')
+        jq -e 'length == 2 and all(.up > 0 and .down > 0)' <<<"$counters" >/dev/null && break
+        sleep 5
+    done
+    echo "  ..   ${counters}"
+    jq -e 'length == 2 and all(.up > 0 and .down > 0)' <<<"$counters" >/dev/null \
+        || die "панель не учла трафик на обоих инбаундах (ожидание ${i}×5 с)"
+    echo "  ok   панель учла трафик на обоих инбаундах"
+}
+
 case "${1:-}" in
     fresh)       scenario_fresh ;;
     upgrade)     scenario_upgrade ;;
     no-ip-limit) scenario_no_ip_limit ;;
     psiphon)     scenario_psiphon ;;
-    *) echo "Сценарий: fresh | upgrade | no-ip-limit | psiphon" >&2; exit 2 ;;
+    traffic)     scenario_traffic ;;
+    *) echo "Сценарий: fresh | upgrade | no-ip-limit | psiphon | traffic" >&2; exit 2 ;;
 esac
 echo; echo "=== сценарий ${1} пройден"

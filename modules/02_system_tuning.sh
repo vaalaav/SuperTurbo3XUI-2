@@ -15,8 +15,16 @@ apt-get install -y -qq curl wget gnupg2 ca-certificates lsb-release \
     sqlite3 python3 jq socat certbot ufw fail2ban nftables cron openssl dnsutils
 
 log_info "Подключение официального репозитория nginx.org (${ID})..."
-curl -fsSL https://nginx.org/keys/nginx_signing.key \
-    | gpg --batch --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+# Отпечаток ключа подписи пакетов, опубликованный на nginx.org/en/linux_packages.html.
+NGINX_KEY_FPR="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62" # gitleaks:allow — публичный отпечаток ключа, не секрет
+NGINX_KEY_TMP=$(mktemp)
+trap 'rm -f "$NGINX_KEY_TMP"' EXIT
+curl -fsSL --retry 3 https://nginx.org/keys/nginx_signing.key -o "$NGINX_KEY_TMP" \
+    || log_err "Не удалось скачать ключ подписи nginx.org."
+if ! gpg --show-keys --with-colons "$NGINX_KEY_TMP" 2>/dev/null | awk -F: '/^fpr/ {print $10}' | grep -qx "$NGINX_KEY_FPR"; then
+    log_err "Отпечаток ключа nginx.org не совпал с ${NGINX_KEY_FPR} — репозиторий не подключён."
+fi
+gpg --batch --yes --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg "$NGINX_KEY_TMP"
 chmod 644 /usr/share/keyrings/nginx-archive-keyring.gpg
 
 CODENAME=$(lsb_release -cs)

@@ -255,13 +255,13 @@ journalctl -u vps-psiphon # журнал службы
 | Линтеры | shellcheck (0 предупреждений), ruff (`ruff.toml`), actionlint | `bash tests/lint.sh` |
 | Секреты | gitleaks по всей истории и рабочему дереву | — |
 | Модульные тесты | `tests/unit/`: проверка ссылок панели, шаблон Xray на базе встроенного, проверка geo-правил, маршруты Psiphon, перенос AI-маршрутов, вход в API (токен → пароль), `version_ge`, `save_var` со спецсимволами | `bash tests/unit.sh` |
-| Модуль 05 на чистой машине | официальный установщик 3x-ui на раннере с systemd; сценарии `fresh` (установка, повтор, восстановление токена), `upgrade` (с 3.10.2 с сохранением данных), `no-ip-limit`, `psiphon` (модуль 06 с настоящим туннелем) | см. ниже |
+| Модуль 05 на чистой машине | официальный установщик 3x-ui на раннере с systemd; сценарии `fresh` (установка, повтор, восстановление токена), `upgrade` (с 3.10.2 с сохранением данных), `no-ip-limit`, `psiphon` (модуль 06 с настоящим туннелем), `traffic` (модули 02, 05, 07 с самоподписанным сертификатом; подписка через 443, трафик через Reality и XHTTP клиентом Xray, блокировка РФ, чужой UUID, счётчики панели) | см. ниже |
 | Конфигурация nginx | рендер модуля 07 и `nginx -t` на nginx.org stable | см. ниже |
 
 Сквозные тесты **переустанавливают 3x-ui и перезаписывают системные файлы**, поэтому запускаются только на одноразовой машине и без `E2E_DISPOSABLE=1` отказываются работать:
 
 ```bash
-sudo E2E_DISPOSABLE=1 bash tests/e2e/module05.sh fresh      # или upgrade, no-ip-limit, psiphon
+sudo E2E_DISPOSABLE=1 bash tests/e2e/module05.sh fresh      # или upgrade, no-ip-limit, psiphon, traffic
 sudo E2E_DISPOSABLE=1 bash tests/nginx/check_config.sh      # нужен nginx >= 1.25.1
 ```
 
