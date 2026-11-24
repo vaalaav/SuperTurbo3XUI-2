@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Библиотека подключается модулями через source: её переменные (цвета, пути, версии)
+# используются там, а не здесь, поэтому SC2034 «переменная не используется» для файла отключён.
+# shellcheck disable=SC2034
 set -eu
 
 RED='\033[0;31m'
@@ -14,6 +17,12 @@ STATE_FILE="${STATE_DIR}/state.env"
 PROGRESS_FILE="${STATE_DIR}/last_module"
 BACKUP_ROOT="/root/3xui-node-backups"
 LOG_FILE="/var/log/3xui-node-install.log"
+
+# 3x-ui: проект использует REST API версии 3.11 (клиенты, хосты, токены), поэтому ниже неё не работает.
+XUI_DEFAULT_VERSION="v3.11.0"
+XUI_MIN_VERSION="3.11.0"
+XUI_BIN="/usr/local/x-ui/x-ui"
+XUI_TOKEN_NAME="3xui-node"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1" | tee -a "$LOG_FILE" 2>/dev/null || echo -e "${CYAN}[INFO]${NC} $1"; }
 log_ok()   { echo -e "${GREEN}[OK]${NC} $1"   | tee -a "$LOG_FILE" 2>/dev/null || echo -e "${GREEN}[OK]${NC} $1"; }
@@ -115,4 +124,73 @@ pick_free_port() {
         fi
     done
     log_err "Не удалось подобрать свободный порт в диапазоне ${low}-${high}."
+}
+
+# Истина, если версия $1 >= $2 (формат X.Y.Z, префикс v допускается).
+version_ge() {
+    local a="${1#v}" b="${2#v}"
+    [[ -n "$a" && "$(printf '%s\n%s\n' "$b" "$a" | sort -V | head -n 1)" == "$b" ]]
+}
+
+# Версия установленной 3x-ui (например 3.11.0) или пустая строка.
+xui_installed_version() {
+    [[ -x "$XUI_BIN" ]] || return 0
+    "$XUI_BIN" -v 2>/dev/null | head -n 1 | tr -d '[:space:]' | sed 's/^v//'
+}
+
+# Тег релиза 3x-ui вида vX.Y.Z не ниже минимально поддерживаемого.
+validate_xui_version() {
+    local tag="$1"
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || log_err "Версия 3x-ui должна быть тегом релиза вида v3.11.0 (получено: ${tag})."
+    version_ge "$tag" "$XUI_MIN_VERSION" || log_err "Нужна 3x-ui не ниже v${XUI_MIN_VERSION} (запрошена ${tag})."
+}
+
+# Код ответа панели на запрос с токеном: 200 — токен рабочий, 401 — отклонён, 000 — панель недоступна.
+xui_token_http_code() {
+    curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+        -H "Authorization: Bearer $1" \
+        "http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/panel/api/server/status" 2>/dev/null || true
+}
+
+# Постоянный именованный API-токен проекта: хранится в state.env и переиспользуется.
+# Перевыпускается (с тем же именем, без накопления токенов) только если панель его отклонила.
+# x-ui setting -getApiToken без имени при каждом вызове аннулирует прежний токен cli-fallback.
+ensure_xui_api_token() {
+    local code tok
+    if [[ -n "${XUI_API_TOKEN:-}" ]]; then
+        code=$(xui_token_http_code "$XUI_API_TOKEN")
+        if [[ "$code" == "200" ]]; then
+            export XUI_API_TOKEN
+            return 0
+        fi
+        [[ "$code" == "401" ]] || log_err "Панель 3x-ui не отвечает на 127.0.0.1:${PANEL_PORT}/${PANEL_PATH} (HTTP ${code:-000})."
+        log_warn "Сохранённый API-токен отклонён панелью — выпускаю новый."
+    fi
+    tok=$("$XUI_BIN" setting -getApiToken -tokenName "$XUI_TOKEN_NAME" 2>/dev/null | awk '/^apiToken:/ {print $2; exit}')
+    [[ -n "$tok" ]] || log_err "Не удалось выпустить API-токен 3x-ui (x-ui setting -getApiToken)."
+    code=$(xui_token_http_code "$tok")
+    [[ "$code" == "200" ]] || log_err "Панель 3x-ui не принимает новый API-токен (HTTP ${code:-000})."
+    save_var XUI_API_TOKEN "$tok"
+    export XUI_API_TOKEN="$tok"
+}
+
+# Ждёт, пока панель начнёт отвечать по HTTP на 127.0.0.1. `systemctl restart` для unit с Type=simple
+# возвращается сразу после запуска процесса, а слушать порт панель начинает примерно через секунду:
+# следующий шаг или модуль, обратившийся к API в этот момент, получал «соединение отклонено».
+wait_xui_ready() {
+    local timeout="${1:-30}" code=""
+    local tries=$(( timeout * 2 ))
+    for (( i = 0; i < tries; i++ )); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 \
+            "http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/" 2>/dev/null || true)
+        [[ -n "$code" && "$code" != "000" ]] && return 0
+        sleep 0.5
+    done
+    log_err "Панель 3x-ui не ответила на 127.0.0.1:${PANEL_PORT} за ${timeout} с — смотрите journalctl -u x-ui."
+}
+
+# Перезапуск панели с ожиданием готовности.
+restart_xui() {
+    systemctl restart x-ui
+    wait_xui_ready "${1:-30}"
 }

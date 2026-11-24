@@ -255,7 +255,8 @@ http {
 
         location /${XHTTP_PATH}/ {
             proxy_pass http://xray_xhttp;
-            proxy_http_version 2;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
             proxy_buffering off;
             proxy_request_buffering off;
             gzip off;
@@ -306,6 +307,5 @@ fi
 
 systemctl enable --now nginx >/dev/null 2>&1
 systemctl restart nginx
-systemctl restart x-ui
-sleep 2
+restart_xui
 log_ok "Nginx (127.0.0.1:8443) и Xray/3x-ui (0.0.0.0:443) запущены."

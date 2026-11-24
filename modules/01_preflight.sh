@@ -28,6 +28,10 @@ command -v curl    >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y
 command -v python3 >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq python3; }
 command -v openssl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq openssl; }
 
+# Версия 3x-ui: по умолчанию проверенный релиз, переопределяется XUI_VERSION=vX.Y.Z или --xui-version.
+XUI_VERSION="${XUI_VERSION:-$XUI_DEFAULT_VERSION}"
+validate_xui_version "$XUI_VERSION"
+
 # 3. Определение внешнего IPv4, RAM и текущего SSH
 SERVER_IP=$(curl -4fsSL --max-time 6 https://api.ipify.org || curl -4fsSL --max-time 6 https://ifconfig.me/ip || true)
 [[ -n "$SERVER_IP" ]] || log_err "Не удалось определить публичный IPv4 сервера."
@@ -188,24 +192,22 @@ CS_DEF="Y"
 read -erp "9. Установить CrowdSec + nftables bouncer? (RAM: ${TOTAL_RAM_MB}MB) [${CS_DEF}]: " EN_CS
 EN_CS=${EN_CS:-"$CS_DEF"}
 ENABLE_CROWDSEC=$([[ "$EN_CS" =~ ^[Yy]$ ]] && echo "true" || echo "false")
+read -erp "   Лимит устройств на клиента (IP Limit 3x-ui через Fail2ban)? [Y/n]: " EN_IPL
+ENABLE_IP_LIMIT=$([[ "${EN_IPL:-Y}" =~ ^[Nn]$ ]] && echo "false" || echo "true")
 
-# 10. Модуль вывода AI-сервисов (WARP / Psiphon)
-echo -e "\n10. Модуль вывода AI-сервисов (ChatGPT/Gemini/Claude):"
+# 10. Выход для Gemini через Psiphon
+echo -e "\n10. Выход для Gemini через Psiphon:"
 echo "    [1] Выключен (трафик через IP VPS)"
-echo "    [2] Встроенный Cloudflare WARP (0 МБ лишней RAM)"
-echo "    [3] Psiphon в Docker (оптимально для Gemini)"
-echo "    [4] Комбинированный (Gemini -> Psiphon, прочее -> WARP)"
+echo "    [2] Psiphon в Docker (vps-psiphon)"
 read -erp "    Выбор [1]: " AI_CHOICE
 PSIPHON_REGION="DE"
 PSIPHON_IP_DETECT="false"
 case "${AI_CHOICE:-1}" in
-    2) AI_MODE="warp" ;;
-    3) AI_MODE="psiphon" ;;
-    4) AI_MODE="combo" ;;
+    2) AI_MODE="psiphon" ;;
     *) AI_MODE="none" ;;
 esac
 
-if [[ "$AI_MODE" == "psiphon" || "$AI_MODE" == "combo" ]]; then
+if [[ "$AI_MODE" == "psiphon" ]]; then
     read -erp "    Регион Psiphon (DE/NL/GB/US) [DE]: " PSIPHON_REGION
     PSIPHON_REGION=${PSIPHON_REGION:-"DE"}
     read -erp "    Пускать IP-чекеры (ip-geo-detect) через Psiphon? [y/N]: " PIPD
@@ -262,6 +264,8 @@ save_var REVERSE_PROXY_URL "$REVERSE_PROXY_URL"
 save_var UTLS_FP "$UTLS_FP"
 save_var ENABLE_ANTISCAN "$ENABLE_ANTISCAN"
 save_var ENABLE_CROWDSEC "$ENABLE_CROWDSEC"
+save_var ENABLE_IP_LIMIT "$ENABLE_IP_LIMIT"
+save_var XUI_VERSION "$XUI_VERSION"
 save_var AI_MODE "$AI_MODE"
 save_var PSIPHON_REGION "$PSIPHON_REGION"
 save_var PSIPHON_IP_DETECT "$PSIPHON_IP_DETECT"
@@ -285,7 +289,8 @@ echo "  SSH порт:    ${SSH_PORT} (смена: ${SSH_PORT_CHANGED})"
 echo "  DNS ОС:      ${SYSTEM_DNS_MODE}"
 echo "  Заглушка:    ${MASK_TEMPLATE}"
 echo "  uTLS:        ${UTLS_FP}"
-echo "  Antiscan:    ${ENABLE_ANTISCAN} | CrowdSec: ${ENABLE_CROWDSEC}"
+echo "  Antiscan:    ${ENABLE_ANTISCAN} | CrowdSec: ${ENABLE_CROWDSEC} | IP Limit: ${ENABLE_IP_LIMIT}"
+echo "  3x-ui:       ${XUI_VERSION}"
 echo "  AI-модуль:   ${AI_MODE}"
 echo "  Happ Route:  ${ENABLE_HAPP} | Geo-mirror: ${ENABLE_GEO_MIRROR}"
 echo ""

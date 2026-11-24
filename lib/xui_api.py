@@ -6,10 +6,13 @@ clients / client_inbounds / client_traffics оставались полност�
 """
 import argparse
 import base64
+import copy
 import http.cookiejar
 import json
 import os
 import secrets
+import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,12 +28,24 @@ class XuiApiClient:
         self.cj = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
         self.token = None
+        self.csrf = None
 
-    def _req(self, method: str, endpoint: str, data=None, form=False):
+    def _req(self, method: str, endpoint: str, data=None, form=False, check=True, timeout: float = 20):
+        """Запрос к API панели. При check=True ответ {"success": false} считается ошибкой:
+        3x-ui отвечает HTTP 200 даже на отклонённые запросы, и без проверки они проходят молча."""
+        res = self._raw_req(method, endpoint, data=data, form=form, timeout=timeout)
+        if check and isinstance(res, dict) and res.get("success") is False:
+            raise RuntimeError(f"API 3x-ui отклонил {method} {endpoint}: {res.get('msg') or res}")
+        return res
+
+    def _raw_req(self, method: str, endpoint: str, data=None, form=False, timeout: float = 20):
         url = f"{self.base_url}{endpoint}"
         headers = {"Accept": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        elif self.csrf:
+            # Сессия по cookie: 3.11 требует X-CSRF-Token на изменяющих запросах, включая /login.
+            headers["X-CSRF-Token"] = self.csrf
         body = None
         if data is not None:
             if form:
@@ -41,67 +56,46 @@ class XuiApiClient:
                 headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            import urllib.parse as _up, re as _re
-            _u = _up.urlsplit(req.full_url)
-            _origin = f'{_u.scheme}://{_u.netloc}'
-            if not getattr(self, '_bearer_token', '') and not getattr(self, '_csrf_init', False):
-                self._csrf_init = True
-                self._csrf_ref = req.full_url.rsplit('/', 1)[0] + '/'
-                self._csrf_tok = ''
-                try:
-                    with self.opener.open(self._csrf_ref, timeout=10) as _r0:
-                        self._csrf_tok = _r0.headers.get('X-CSRF-Token', '') or ''
-                        _html = _r0.read().decode('utf-8', 'ignore')
-                        if not self._csrf_tok:
-                            _cm = _re.search(r'csrf[_-]?token[^A-Za-z0-9_-]+(?:content=)?[\x22\x27]([A-Za-z0-9._~+/=-]{8,})', _html, _re.I)
-                            if _cm:
-                                self._csrf_tok = _cm.group(1)
-                except Exception:
-                    pass
-            req.add_header('Origin', _origin)
-            req.add_header('Referer', getattr(self, '_csrf_ref', _origin + '/'))
-            req.add_header('Sec-Fetch-Site', 'same-origin')
-            req.add_header('X-Requested-With', 'XMLHttpRequest')
-            _tok = getattr(self, '_csrf_tok', '')
-            for _h in getattr(self.opener, 'handlers', []):
-                _cj = getattr(_h, 'cookiejar', None)
-                if _cj is not None:
-                    for _c in _cj:
-                        if 'csrf' in _c.name.lower() or 'xsrf' in _c.name.lower():
-                            _tok = _c.value
-            if _tok:
-                req.add_header('X-CSRF-Token', _tok)
-                req.add_header('X-XSRF-Token', _tok)
-            if getattr(self, '_bearer_token', ''):
-                req.add_header('Authorization', 'Bearer ' + self._bearer_token)
-            with self.opener.open(req, timeout=20) as resp:
+            with self.opener.open(req, timeout=timeout) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 return json.loads(raw) if raw.strip() else {}
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {e.code} on {endpoint}: {err_body}") from e
+            raise RuntimeError(f"HTTP {e.code} на {method} {endpoint}: {err_body[:300]}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Панель 3x-ui недоступна ({self.base_url}): {e.reason}") from e
+
+    def _fetch_csrf(self) -> str:
+        tok = self._raw_req("GET", "/csrf-token").get("obj") or ""
+        if not tok:
+            raise RuntimeError("Панель не выдала CSRF-токен (/csrf-token).")
+        return tok
 
     def login(self):
-        import subprocess as _sp, re as _re_tok
-        try:
-            _out = _sp.check_output(['/usr/local/x-ui/x-ui', 'setting', '-getApiToken'], text=True, stderr=_sp.STDOUT)
-            _tm = _re_tok.search(r'apiToken:\s*(\S+)', _out)
-            if _tm:
-                self._bearer_token = _tm.group(1)
+        """Авторизация. Основной путь — постоянный API-токен проекта из XUI_API_TOKEN
+        (его выпускает ensure_xui_api_token в lib/common.sh). Запасной — логин и пароль панели."""
+        token = os.environ.get("XUI_API_TOKEN", "").strip()
+        if token:
+            self.token = token
+            try:
                 self.get_settings()
-                return
-        except Exception:
-            self._bearer_token = ''
-        res = self._req("POST", "/login", {"username": self.username, "password": self.password}, form=True)
+                return True
+            except RuntimeError as e:
+                if not str(e).startswith("HTTP 401"):
+                    raise
+                self.token = None
+        if not (self.username and self.password):
+            raise RuntimeError("Нет рабочего API-токена (XUI_API_TOKEN) и не заданы логин/пароль панели.")
+        self.csrf = self._fetch_csrf()
+        res = self._req("POST", "/login", {"username": self.username, "password": self.password}, check=False)
         if not res.get("success"):
-            raise RuntimeError(f"Не удалось авторизоваться в API 3x-ui: {res}")
+            raise RuntimeError(f"Не удалось авторизоваться в API 3x-ui: {res.get('msg') or res}")
+        self.csrf = self._fetch_csrf()
         return True
 
     def get_settings(self):
-        try:
-            res = self._req("POST", "/panel/api/setting/all", {})
-        except RuntimeError:
-            res = self._req("GET", "/panel/api/setting/all")
+        # В 3.11 эндпоинт только POST; GET отвечает 404 и маскировал бы настоящую ошибку (например 401).
+        res = self._req("POST", "/panel/api/setting/all", {})
         if not res.get("success"):
             raise RuntimeError(f"Ошибка чтения настроек 3x-ui: {res}")
         return res.get("obj", {})
@@ -127,11 +121,93 @@ class XuiApiClient:
             raise RuntimeError(f"Ошибка создания инбаунда {payload.get('remark')}: {res}")
         return res.get("obj")
 
+    def get_xray_template(self) -> dict:
+        """Шаблон Xray. В 3.11 он не входит в setting/all: читается только через POST /panel/api/xray/."""
+        obj = self._req("POST", "/panel/api/xray/", {}).get("obj")
+        if isinstance(obj, str):
+            obj = json.loads(obj) if obj.strip() else {}
+        tpl = obj.get("xraySetting", {}) if isinstance(obj, dict) else {}
+        if isinstance(tpl, str):
+            tpl = json.loads(tpl) if tpl.strip() else {}
+        if not isinstance(tpl, dict) or not tpl:
+            raise RuntimeError("Панель вернула пустой шаблон Xray.")
+        return tpl
+
+    def get_default_xray_template(self) -> dict:
+        """Встроенный шаблон Xray установленной версии панели."""
+        obj = self._req("GET", "/panel/api/xray/getDefaultJsonConfig").get("obj")
+        if isinstance(obj, str):
+            obj = json.loads(obj) if obj.strip() else {}
+        if not isinstance(obj, dict) or not obj.get("outbounds"):
+            raise RuntimeError("Панель вернула пустой встроенный шаблон Xray.")
+        return obj
+
+    def update_geofiles(self):
+        """Штатное обновление всех geo-файлов панели (Loyalsoldier, IR, RU): каждый файл сверяется
+        с дайджестом своего релиза и заменяется атомарно; Xray перезапускается, только если что-то
+        изменилось."""
+        return self._req("POST", "/panel/api/server/updateGeofile", {}, timeout=300)
+
+    def validate_geodata(self, tokens: list[str], kind: str) -> list[dict]:
+        """Проблемные правила (нет файла или категории) среди tokens; kind — domain или ip."""
+        if not tokens:
+            return []
+        data = {"tokens": ",".join(tokens), "kind": kind}
+        return self._req("POST", "/panel/api/xray/geodata/validate", data, form=True).get("obj") or []
+
+    def update_xray_template(self, tpl: dict):
+        """Сохраняет шаблон Xray. setting/update поле xrayTemplateConfig молча игнорирует."""
+        return self._req("POST", "/panel/api/xray/update", {"xraySetting": json.dumps(tpl, indent=2)}, form=True)
+
+    def list_clients(self):
+        return self._req("GET", "/panel/api/clients/list").get("obj") or []
+
+    def delete_client(self, email: str):
+        # Эндпоинт принимает email клиента, а не его id.
+        return self._req("POST", f"/panel/api/clients/del/{urllib.parse.quote(email, safe='')}", {})
+
+    def add_client(self, client: dict, inbound_ids: list):
+        return self._req("POST", "/panel/api/clients/add", {"client": client, "inboundIds": inbound_ids})
+
+    def add_host_group(self, payload: dict):
+        res = self._req("POST", "/panel/api/hosts/add", payload)
+        if not res.get("obj"):
+            raise RuntimeError(f"Хост-группа «{payload.get('remark')}» не создала ни одного хоста: {res}")
+        return res["obj"]
+
+    def client_links(self, email: str) -> list:
+        return self._req("GET", f"/panel/api/clients/links/{urllib.parse.quote(email, safe='')}").get("obj") or []
+
     def restart_xray(self):
+        # Ошибку не пробрасываем: итог рестарта проверяет wait_xray_running по состоянию Xray,
+        # но и молча её не теряем.
         try:
             self._req("POST", "/panel/api/server/restartXrayService", {})
-        except Exception:
-            pass
+        except RuntimeError as e:
+            print(f"Предупреждение: запрос рестарта Xray не прошёл: {e}", file=sys.stderr)
+
+    def wait_xray_running(self, timeout: float = 30.0, settle: float = 3.0, stable_polls: int = 4):
+        """Убеждается, что Xray устойчиво работает после рестарта.
+        Панель проверяет синтаксис шаблона, но ошибки запуска (например, kernel TUN без прав)
+        видны только в /server/status, причём с задержкой ~2 с: сразу после рестарта там ещё
+        старое «running». Поэтому ждём settle и требуем несколько подряд «running»."""
+        time.sleep(settle)
+        deadline = time.monotonic() + timeout
+        last, running, errors = {}, 0, 0
+        while time.monotonic() < deadline:
+            try:
+                last = self._req("GET", "/panel/api/server/status").get("obj", {}).get("xray") or {}
+            except RuntimeError:
+                last = {}
+            state = last.get("state")
+            running = running + 1 if state == "running" else 0
+            errors = errors + 1 if state == "error" else 0
+            if running >= stable_polls:
+                return
+            if errors >= 2:
+                break
+            time.sleep(1)
+        raise RuntimeError(f"Xray не запустился после применения конфигурации: {last.get('errorMsg') or last or 'нет ответа'}")
 
 
 def detect_country_label(server_ip: str) -> str:
@@ -153,12 +229,19 @@ def detect_country_label(server_ip: str) -> str:
                 if len(code) == 2 and code.isalpha():
                     flag = "".join(chr(0x1F1E6 + ord(ch) - ord("A")) for ch in code)
                     return f"{flag} {names_ru.get(code, d.get('country', code))}"
-    except Exception:
+    except Exception:  # noqa: S110, BLE001 — подпись страны декоративная: при любой ошибке берётся «🌐 Node»
         pass
     return "🌐 Node"
 
 
-def build_base_xray_template(geo_ru_available: bool = True) -> dict:
+def build_base_xray_template(default_tpl: dict, geo_ru_available: bool = True) -> dict:
+    """Базовый шаблон Xray проекта поверх встроенного шаблона установленной версии 3x-ui.
+
+    От встроенного шаблона берутся api (с RoutingService), блок metrics, inbound api (`tunnel`),
+    политики, статистика и direct с finalRules — так обновления панели доходят до ноды.
+    Сверху проект задаёт DNS через DoH, предпочтение IPv4 для direct и блокировку трафика в РФ.
+    """
+    tpl = copy.deepcopy(default_tpl)
     ru_domains = [
         "geosite:category-ru",
         "regexp:.*\\.(ru|su|xn--p1ai)$",
@@ -168,82 +251,72 @@ def build_base_xray_template(geo_ru_available: bool = True) -> dict:
         ru_domains.append("ext:geosite_RU.dat:ru-available-only-inside")
         ru_ips.append("ext:geoip_RU.dat:ru")
 
-    return {
-        "log": {
-            "access": "none",
-            "dnsLog": False,
-            "error": "",
-            "loglevel": "warning",
-            "maskAddress": "",
-        },
-        "api": {
-            "tag": "api",
-            "services": ["HandlerService", "LoggerService", "StatsService"],
-        },
-        "dns": {
-            "servers": [
-                "https+local://1.1.1.1/dns-query",
-                "https+local://9.9.9.9/dns-query",
-            ],
-            "queryStrategy": "UseIPv4",
-        },
-        "inbounds": [
-            {
-                "listen": "127.0.0.1",
-                "port": 62789,
-                "protocol": "dokodemo-door",
-                "settings": {"address": "127.0.0.1"},
-                "tag": "api",
-            }
+    tpl["dns"] = {
+        "servers": [
+            "https+local://1.1.1.1/dns-query",
+            "https+local://9.9.9.9/dns-query",
         ],
-        "outbounds": [
-            {
-                "tag": "direct",
-                "protocol": "freedom",
-                "settings": {"domainStrategy": "UseIPv4"},
-            },
-            {
-                "tag": "blocked",
-                "protocol": "blackhole",
-                "settings": {},
-            },
-        ],
-        "policy": {
-            "levels": {"0": {"statsUserDownlink": True, "statsUserUplink": True}},
-            "system": {"statsInboundDownlink": True, "statsInboundUplink": True},
-        },
-        "routing": {
-            "domainStrategy": "IPIfNonMatch",
-            "rules": [
-                {
-                    "type": "field",
-                    "inboundTag": ["api"],
-                    "outboundTag": "api",
-                },
-                {
-                    "type": "field",
-                    "outboundTag": "blocked",
-                    "protocol": ["bittorrent"],
-                },
-                {
-                    "type": "field",
-                    "outboundTag": "blocked",
-                    "ip": ["geoip:private"],
-                },
-                {
-                    "type": "field",
-                    "outboundTag": "blocked",
-                    "domain": ru_domains,
-                },
-                {
-                    "type": "field",
-                    "outboundTag": "blocked",
-                    "ip": ru_ips,
-                },
-            ],
-        },
-        "stats": {},
+        "queryStrategy": "UseIPv4",
     }
+    direct = next((o for o in tpl.get("outbounds", []) if o.get("tag") == "direct"), None)
+    if direct is None:
+        raise RuntimeError("Во встроенном шаблоне 3x-ui нет outbound direct.")
+    # freedom.domainStrategy в Xray устарел: стратегия задаётся в streamSettings.sockopt.
+    direct.get("settings", {}).pop("domainStrategy", None)
+    direct.setdefault("streamSettings", {}).setdefault("sockopt", {})["domainStrategy"] = "UseIPv4"
+
+    routing = tpl.setdefault("routing", {})
+    # IP-правила (geoip:ru) должны срабатывать и для запросов по домену.
+    routing["domainStrategy"] = "IPIfNonMatch"
+    routing.setdefault("rules", []).extend([
+        {"type": "field", "outboundTag": "blocked", "domain": ru_domains},
+        {"type": "field", "outboundTag": "blocked", "ip": ru_ips},
+    ])
+    return tpl
+
+
+def template_geodata_tokens(tpl: dict) -> tuple[list[str], list[str]]:
+    """Правила маршрутизации шаблона, которые ссылаются на geo-файлы: (domain, ip)."""
+    domains: list[str] = []
+    ips: list[str] = []
+    for rule in tpl.get("routing", {}).get("rules", []):
+        domains += [t for t in rule.get("domain") or [] if t.startswith(("geosite:", "ext:"))]
+        ips += [t for t in rule.get("ip") or [] if t.startswith(("geoip:", "ext:", "!geoip:"))]
+    return sorted(set(domains)), sorted(set(ips))
+
+
+def check_template_geodata(api: "XuiApiClient", tpl: dict):
+    """Проверяет по geo-файлам на диске, что все категории правил существуют.
+    Xray с отсутствующей категорией не запускается, а панель такой шаблон сохраняет."""
+    domains, ips = template_geodata_tokens(tpl)
+    issues = api.validate_geodata(domains, "domain") + api.validate_geodata(ips, "ip")
+    if issues:
+        found = "; ".join(f"{i.get('token')} ({i.get('reason')})" for i in issues)
+        raise RuntimeError(f"Правила маршрутизации ссылаются на отсутствующие geo-данные: {found}")
+
+
+BASE_OUTBOUND_TAGS = ("direct", "blocked", "api", "IPv4")
+
+
+def _is_custom_rule(rule: dict) -> bool:
+    """Правило, добавленное поверх базового шаблона (AI-маршруты и т.п.), которое надо сохранить."""
+    tag = rule.get("outboundTag")
+    if tag not in ("api", "blocked", "direct"):
+        return True
+    # Блок UDP/QUIC для Gemini из AI-модуля ведёт в blocked, но это не базовое правило.
+    return tag == "blocked" and rule.get("network") == "udp" and "geosite:google-deepmind" in (rule.get("domain") or [])
+
+
+def merge_custom_into_base(base: dict, current: dict) -> dict:
+    """Базовый шаблон + пользовательские аутбаунды и правила из текущего шаблона.
+    Пользовательские правила встают сразу после правила api, как их ставит configure-ai."""
+    base_tags = {o.get("tag") for o in base.get("outbounds", [])} | set(BASE_OUTBOUND_TAGS)
+    base["outbounds"] += [o for o in current.get("outbounds", []) if o.get("tag") not in base_tags]
+    custom = [r for r in current.get("routing", {}).get("rules", []) if _is_custom_rule(r)]
+    rules = base.setdefault("routing", {}).setdefault("rules", [])
+    at = 1 if rules and rules[0].get("outboundTag") == "api" else 0
+    rules[at:at] = custom
+    return base
 
 
 def build_happ_routing_uri(domain: str, geo_path: str = "", use_mirror: bool = False) -> str:
@@ -309,13 +382,36 @@ def build_happ_routing_uri(domain: str, geo_path: str = "", use_mirror: bool = F
     return f"happ://routing/onadd/{encoded}"
 
 
+def verify_client_links(links: list, client_uuid: str, domain: str):
+    """Проверяет ссылки, которые панель реально отдаёт клиенту: оба транспорта на домене:443,
+    с нашим UUID; Reality — с flow Vision, XHTTP — через TLS и без flow."""
+    found = {}
+    for link in links:
+        u = urllib.parse.urlsplit(link)
+        q = dict(urllib.parse.parse_qsl(u.query))
+        found[q.get("type")] = (u, q)
+
+    def need(cond, msg):
+        if not cond:
+            raise RuntimeError(f"Проверка ссылок панели не пройдена: {msg}. Ссылки: {links}")
+
+    for transport, security in (("tcp", "reality"), ("xhttp", "tls")):
+        need(transport in found, f"нет ссылки type={transport}")
+        u, q = found[transport]
+        need(u.username == client_uuid, f"{transport}: UUID {u.username} вместо {client_uuid}")
+        need((u.hostname, u.port) == (domain.lower(), 443), f"{transport}: адрес {u.hostname}:{u.port} вместо {domain}:443")
+        need(q.get("security") == security, f"{transport}: security={q.get('security')} вместо {security}")
+    need(found["tcp"][1].get("flow") == "xtls-rprx-vision", "reality: нет flow xtls-rprx-vision")
+    need("flow" not in found["xhttp"][1], "xhttp: в ссылке есть flow")
+
+
 def cmd_setup_node(args):
     api = XuiApiClient(args.panel_port, args.panel_path, args.panel_user, args.panel_pass)
     api.login()
 
     settings = api.get_settings()
     geo_ru_exists = os.path.isfile("/usr/local/x-ui/bin/geosite_RU.dat") and os.path.isfile("/usr/local/x-ui/bin/geoip_RU.dat")
-    tpl = build_base_xray_template(geo_ru_available=geo_ru_exists)
+    tpl = build_base_xray_template(api.get_default_xray_template(), geo_ru_available=geo_ru_exists)
 
     settings["webListen"] = "127.0.0.1"
     settings["webCertFile"] = ""
@@ -327,9 +423,7 @@ def cmd_setup_node(args):
     settings["subCertFile"] = ""
     settings["subKeyFile"] = ""
     settings["subURI"] = f"https://{args.domain}/{args.sub_path.strip('/')}/"
-    settings["subShowInfo"] = True
     settings["subUpdates"] = 12
-    settings["xrayTemplateConfig"] = json.dumps(tpl, indent=2)
 
     happ_uri = ""
     if args.enable_happ == "true":
@@ -338,14 +432,22 @@ def cmd_setup_node(args):
             geo_path=args.geo_path,
             use_mirror=(args.enable_geo_mirror == "true"),
         )
-        # Включаем только Happ Routing; Incy Routing остаётся пустым/выключенным
-        settings["subHappRouting"] = happ_uri
-        if "happRouting" in settings:
-            settings["happRouting"] = happ_uri
-        if "subIncyRouting" in settings:
-            settings["subIncyRouting"] = ""
+        # В 3.11 роутинг Happ задаётся полем subRoutingRules (ключей subHappRouting/happRouting нет).
+        settings["subRoutingRules"] = happ_uri
+        settings["subEnableRouting"] = True
 
     api.update_settings(settings)
+
+    # Шаблон Xray сохраняется отдельным эндпоинтом; пользовательские маршруты (AI) переносятся.
+    tpl = merge_custom_into_base(tpl, api.get_xray_template())
+    check_template_geodata(api, tpl)
+    api.update_xray_template(tpl)
+
+    # Сначала удаляем клиентов (по email), затем инбаунды — иначе остаются клиенты-сироты со старым UUID.
+    known_emails = {c.get("email") for c in api.list_clients()}
+    for email in ("user1", "user1-reality", "user1-xhttp"):
+        if email in known_emails:
+            api.delete_client(email)
 
     existing = api.list_inbounds()
     for ib in existing:
@@ -472,13 +574,26 @@ def cmd_setup_node(args):
 
     ibs = {i.get("tag"): i["id"] for i in api.list_inbounds()}
     rid, xid = ibs["inbound-reality-selfsteal"], ibs["inbound-xhttp-packetup"]
-    api._req("POST", "/panel/api/hosts/add", {"inboundIds": [rid], "remark": f"{loc} - Reality", "address": args.domain, "port": 443, "security": "same", "isDisabled": False, "isHidden": False})
-    api._req("POST", "/panel/api/hosts/add", {"inboundIds": [xid], "remark": f"{loc} - XHTTP", "address": args.domain, "port": 443, "security": "tls", "sni": args.domain, "fingerprint": args.utls_fp, "alpn": "h2,http/1.1", "isDisabled": False, "isHidden": False})
-    for c in (api._req("GET", "/panel/api/clients/list").get("obj") or []):
-        if c.get("email") in ("user1", "user1-reality", "user1-xhttp"):
-            api._req("POST", f"/panel/api/clients/del/{c['id']}", {})
-    api._req("POST", "/panel/api/clients/add", {"client": {"email": "user1", "uuid": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id, "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0, "comment": "Primary client", "reset": 0}, "inboundIds": [rid, xid]})
+    # Хосты задают публичный адрес в ссылках и подписке. Без них XHTTP рекламируется
+    # как loopback-порт 11443 без TLS. В 3.11 адреса передаются массивом hosts, alpn — массивом.
+    api.add_host_group({
+        "inboundIds": [rid], "remark": f"{loc} - Reality", "hosts": [args.domain],
+        "port": 443, "security": "same", "isDisabled": False, "isHidden": False,
+    })
+    api.add_host_group({
+        "inboundIds": [xid], "remark": f"{loc} - XHTTP", "hosts": [args.domain],
+        "port": 443, "security": "tls", "sni": args.domain, "fingerprint": args.utls_fp,
+        "alpn": ["h2", "http/1.1"], "isDisabled": False, "isHidden": False,
+    })
+    # UUID клиента VLESS передаётся в поле id; неизвестное поле uuid панель отбрасывает и генерирует свой.
+    api.add_client({
+        "email": "user1", "id": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id,
+        "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0,
+        "comment": "Primary client", "reset": 0,
+    }, [rid, xid])
     api.restart_xray()
+    api.wait_xray_running()
+    verify_client_links(api.client_links("user1"), client_uuid, args.domain)
     print(
         json.dumps(
             {
@@ -497,11 +612,12 @@ def cmd_configure_ai(args):
     api = XuiApiClient(args.panel_port, args.panel_path, args.panel_user, args.panel_pass)
     api.login()
 
-    settings = api.get_settings()
-    tpl = json.loads(settings.get("xrayTemplateConfig") or "{}")
+    tpl = api.get_xray_template()
     outbounds = tpl.setdefault("outbounds", [])
     rules = tpl.setdefault("routing", {}).setdefault("rules", [])
 
+    # Перед применением снимаются прежние AI-маршруты, включая WARP, удалённый из проекта:
+    # на нодах, установленных раньше, он мог остаться в шаблоне.
     outbounds = [o for o in outbounds if o.get("tag") not in ("warp", "psiphon-out")]
     rules = [
         r
@@ -516,51 +632,14 @@ def cmd_configure_ai(args):
 
     insert_idx = 1 if rules and rules[0].get("outboundTag") == "api" else 0
 
-    if args.ai_mode in ("warp", "combo") and args.warp_priv_key:
-        warp_outbound = {
-            "tag": "warp",
-            "protocol": "wireguard",
-            "settings": {
-                "secretKey": args.warp_priv_key,
-                "address": [args.warp_v4, args.warp_v6],
-                "peers": [
-                    {
-                        "publicKey": args.warp_peer_pub,
-                        "endpoint": "engage.cloudflareclient.com:2408",
-                    }
-                ],
-                "reserved": [int(x) for x in args.warp_reserved.split(",") if x.strip()],
-                "mtu": 1280,
-                "kernelMode": False,
-            },
-        }
-        outbounds.append(warp_outbound)
-
-        warp_domains = ["geosite:openai", "geosite:anthropic", "geosite:netflix", "geosite:meta"]
-        if args.ai_mode == "warp":
-            warp_domains.append("geosite:google-deepmind")
-        rules.insert(
-            insert_idx,
-            {
-                "type": "field",
-                "outboundTag": "warp",
-                "domain": warp_domains,
-            },
-        )
-        insert_idx += 1
-
-    if args.ai_mode in ("psiphon", "combo"):
+    if args.ai_mode == "psiphon":
+        # Современная форма socks-аутбаунда (address/port); массив servers — наследие V2Ray.
+        # vps-psiphon публикует SOCKS5 на 127.0.0.1 (--bind-loopback). UDP туда не направляется:
+        # локальный прокси Psiphon его не поддерживает.
         psiphon_outbound = {
             "tag": "psiphon-out",
             "protocol": "socks",
-            "settings": {
-                "servers": [
-                    {
-                        "address": "127.0.0.1",
-                        "port": int(args.psiphon_port),
-                    }
-                ]
-            },
+            "settings": {"address": "127.0.0.1", "port": int(args.psiphon_port)},
         }
         outbounds.append(psiphon_outbound)
 
@@ -590,11 +669,22 @@ def cmd_configure_ai(args):
 
     tpl["outbounds"] = outbounds
     tpl["routing"]["rules"] = rules
-    settings["xrayTemplateConfig"] = json.dumps(tpl, indent=2)
-    api.update_settings(settings)
+    check_template_geodata(api, tpl)
+    api.update_xray_template(tpl)
     api.restart_xray()
-    print(json.dumps({"status": "ok", "ai_mode": args.ai_mode}))
+    api.wait_xray_running()
+    applied = [o["tag"] for o in outbounds if o.get("tag") == "psiphon-out"]
+    print(json.dumps({"status": "ok", "ai_mode": args.ai_mode, "applied": applied}))
 
+
+def cmd_update_geo(args):
+    """Обновляет geo-файлы штатным механизмом панели и проверяет, что правила текущего шаблона
+    по-прежнему находят свои категории в обновлённых файлах."""
+    api = XuiApiClient(args.panel_port, args.panel_path, args.panel_user, args.panel_pass)
+    api.login()
+    res = api.update_geofiles()
+    check_template_geodata(api, api.get_xray_template())
+    print(json.dumps({"status": "ok", "msg": res.get("msg", "")}, ensure_ascii=False))
 
 
 def main():
@@ -612,18 +702,21 @@ def main():
         p1.add_argument(f"--{name}", default="")
 
     p2 = sub.add_parser("configure-ai")
-    for name in (
-        "panel-port", "panel-path", "panel-user", "panel-pass",
-        "ai-mode", "warp-priv-key", "warp-peer-pub", "warp-v4", "warp-v6",
-        "warp-reserved", "psiphon-port", "psiphon-ip-detect",
-    ):
+    for name in ("panel-port", "panel-path", "panel-user", "panel-pass", "psiphon-port", "psiphon-ip-detect"):
         p2.add_argument(f"--{name}", default="")
+    p2.add_argument("--ai-mode", choices=("none", "psiphon"), default="none")
+
+    p3 = sub.add_parser("update-geo")
+    for name in ("panel-port", "panel-path", "panel-user", "panel-pass"):
+        p3.add_argument(f"--{name}", default="")
 
     args = parser.parse_args()
     if args.cmd == "setup-node":
         cmd_setup_node(args)
     elif args.cmd == "configure-ai":
         cmd_configure_ai(args)
+    elif args.cmd == "update-geo":
+        cmd_update_geo(args)
 
 
 if __name__ == "__main__":
