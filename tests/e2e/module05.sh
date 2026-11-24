@@ -152,6 +152,9 @@ scenario_psiphon() {
     running=$(docker inspect --format '{{.Config.Image}}' vps-psiphon 2>/dev/null || true)
     [[ -n "$pinned" && "$running" == "$pinned" ]] || die "контейнер запущен из «${running}», а закреплён «${pinned}»"
     echo "  ok   контейнер запущен из закреплённого образа ${pinned}"
+    grep -qx 'BULK_TEST_MB=0' /etc/default/vps-psiphon \
+        || die "замер скорости Psiphon не отключён: $(grep '^BULK_TEST_MB=' /etc/default/vps-psiphon || echo 'BULK_TEST_MB не задан')"
+    echo "  ok   замер скорости докачкой отключён (BULK_TEST_MB=0)"
     [[ "$(state_get PSIPHON_STATUS)" == ok ]] || die "PSIPHON_STATUS=$(state_get PSIPHON_STATUS), ожидался ok"
     systemctl is-active --quiet vps-psiphon || die "служба vps-psiphon не активна"
     local direct_ip tunnel_ip

@@ -130,7 +130,10 @@ setup_psiphon() {
 
     log_info "Установка Psiphon (vps-psiphon, регион ${PSIPHON_REGION:-авто}, лог: ${PSIPHON_INSTALL_LOG})..."
     ( umask 077; : > "$PSIPHON_INSTALL_LOG" )
-    local args=(--socks-port "$PSIPHON_PORT" --bind-loopback --no-http --impersonate --image "$PSIPHON_IMAGE")
+    # --bulk-test-mb 0: сторожевой процесс судит о выходе по странице YouTube, без замера скорости
+    # докачкой 4 МБ каждые 5 минут (около 35 ГБ трафика в месяц).
+    local args=(--socks-port "$PSIPHON_PORT" --bind-loopback --no-http --impersonate --bulk-test-mb 0
+                --image "$PSIPHON_IMAGE")
     [[ -n "${PSIPHON_REGION:-}" ]] && args+=(--region "$PSIPHON_REGION")
     if ! bash "$tmp" "${args[@]}" </dev/null >>"$PSIPHON_INSTALL_LOG" 2>&1; then
         rm -f "$tmp"
