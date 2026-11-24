@@ -85,6 +85,14 @@ scenario_upgrade() {
     old_tok=$(/usr/local/x-ui/x-ui setting -getApiToken -tokenName e2e-old | awk '/^apiToken:/ {print $2}')
     port=$(/usr/local/x-ui/x-ui setting -show true | awk '/^port:/ {print $2}')
     path=$(/usr/local/x-ui/x-ui setting -show true | awk '/^webBasePath:/ {print $2}')
+    # Установщик последним шагом перезапускает панель, а порт она открывает примерно через секунду.
+    local code="000"
+    for _ in $(seq 1 60); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:${port}${path}" || true)
+        [[ "$code" != "000" ]] && break
+        sleep 0.5
+    done
+    [[ "$code" != "000" ]] || die "старая панель не ответила после установки"
     curl -s --max-time 10 -X POST -H "Authorization: Bearer ${old_tok}" -H 'Content-Type: application/json' \
         "http://127.0.0.1:${port}${path}panel/api/inbounds/add" -d '{"up":0,"down":0,"total":0,"remark":"keep-me",
         "enable":true,"expiryTime":0,"listen":"127.0.0.1","port":30999,"protocol":"vless","tag":"keep-me",
