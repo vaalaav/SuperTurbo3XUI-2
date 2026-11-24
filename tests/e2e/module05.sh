@@ -330,7 +330,11 @@ scenario_traffic() {
     run_module 08_cli_and_audit
     local f=/root/vps-credentials.txt
     # Сравнение без названия профиля после «#»: оно может отличаться у подписки и панели.
-    grep -qF "${reality%%#*}" "$f" || die "в ${f} нет ссылки Reality из подписки"
+    if ! grep -qF "${reality%%#*}" "$f"; then
+        echo "  ..   подписка: ${reality}" >&2
+        echo "  ..   файл:     $(grep -a -A1 '^\[Reality\]' "$f" | tail -n 1)" >&2
+        die "в ${f} нет ссылки Reality из подписки"
+    fi
     grep -qF "${xhttp%%#*}" "$f" || die "в ${f} нет ссылки XHTTP из подписки"
     [[ "$(stat -c %a "$f")" == 600 ]] || die "${f} не с правами 600"
     echo "  ok   ${f}: ссылки совпадают с подпиской, права 600"
