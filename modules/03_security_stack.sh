@@ -23,7 +23,10 @@ if [[ -s "$SSH_KEYS_FILE" ]]; then
     log_ok "Публичные SSH-ключи добавлены в /root/.ssh/authorized_keys."
 fi
 
-sed -i -E 's/^[[:space:]]*Port[[:space:]]+/#Port /g' /etc/ssh/sshd_config
+for ssh_cfg in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+    [[ -f "$ssh_cfg" && "$ssh_cfg" != "/etc/ssh/sshd_config.d/00-custom-ssh.conf" ]] || continue
+    sed -i -E 's/^[[:space:]]*Port[[:space:]]+/#Port /g' "$ssh_cfg"
+done
 
 cat <<EOF > /etc/ssh/sshd_config.d/00-custom-ssh.conf
 # Managed by 3xui-node installer
@@ -69,6 +72,8 @@ systemctl restart ${SSH_UNIT} || true
 ufw allow "${CUR_SSH_PORT}/tcp" >/dev/null 2>&1 || true
 EOF
     chmod +x /usr/local/sbin/ssh-port-rollback.sh
+    systemctl stop ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
+    systemctl reset-failed ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
     systemd-run --unit=ssh-port-rollback --on-active=180s /usr/local/sbin/ssh-port-rollback.sh >/dev/null 2>&1 || true
 fi
 
@@ -137,7 +142,7 @@ banaction = nftables-multiport
 enabled = true
 port = ${SSH_PORT}
 backend = systemd
-journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+journalmatch = _SYSTEMD_UNIT=${SSH_UNIT} + _COMM=sshd + _COMM=sshd-session
 maxretry = 4
 bantime = 24h
 
@@ -293,8 +298,13 @@ def main():
 
     collapsed = list(ipaddress.collapse_addresses(valid))
     if len(collapsed) < MIN_NETS:
-        print(f"WARN: получено слишком мало сетей ({len(collapsed)}), сохраняю текущие правила.")
-        sys.exit(0)
+        if os.path.isfile(NFT_FILE):
+            print(f"WARN: получено слишком мало сетей ({len(collapsed)}), сохраняю текущие правила.")
+            sys.exit(0)
+        if not collapsed:
+            print("WARN: список сетей сканеров пуст, правила не созданы.")
+            sys.exit(1)
+        print(f"WARN: внешние списки недоступны ({len(collapsed)} сетей < {MIN_NETS}), применяю базовый статический список.")
 
     allow_nets = load_allowlist()
     ssh_port = read_ssh_port()

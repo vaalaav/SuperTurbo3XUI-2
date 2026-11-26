@@ -60,7 +60,8 @@ chmod +x "${INSTALL_DIR}/bootstrap.sh" \
          "${INSTALL_DIR}/install.sh" \
          "${INSTALL_DIR}/modules/"*.sh \
          "${INSTALL_DIR}/lib/"*.py \
-         "${INSTALL_DIR}/cli/my3xui"
+         "${INSTALL_DIR}/cli/my3xui" \
+         "${INSTALL_DIR}/cli/3xui-node-geo-update"
 
 echo -e "${GREEN}[OK] Проект развёрнут в ${INSTALL_DIR}${NC}"
 exec bash "${INSTALL_DIR}/install.sh" "$@"

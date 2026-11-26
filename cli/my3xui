@@ -507,29 +507,57 @@ EOF
             ;;
         change-port)
             local old_p="${SSH_PORT:-22}"
+            # shellcheck disable=SC1091
+            source "${INSTALL_DIR}/lib/common.sh"
             read -erp "Новый порт SSH (1024-39999): " new_p
             [[ "$new_p" =~ ^[0-9]+$ ]] && (( new_p >= 1024 && new_p <= 39999 )) || { echo -e "${RED}Некорректный порт.${NC}"; return 1; }
-            local bak
+            if [[ "$new_p" == "$old_p" ]]; then
+                echo -e "${YELLOW}Порт ${new_p} уже используется для SSH.${NC}"
+                return 0
+            fi
+            if ! is_port_free "$new_p"; then
+                echo -e "${RED}Порт ${new_p} уже занят другим сервисом.${NC}"
+                return 1
+            fi
+            local bak ssh_cfg
             bak="/root/ssh-bak-$(date +%s)"
             cp -a /etc/ssh "$bak"
-            sed -i -E "s/^Port .*/Port ${new_p}/" /etc/ssh/sshd_config.d/00-custom-ssh.conf 2>/dev/null || echo "Port ${new_p}" > /etc/ssh/sshd_config.d/00-custom-ssh.conf
-            sshd -t || { cp -a "${bak}/." /etc/ssh/; echo -e "${RED}Ошибка sshd -t.${NC}"; return 1; }
+            for ssh_cfg in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+                [[ -f "$ssh_cfg" && "$ssh_cfg" != "/etc/ssh/sshd_config.d/00-custom-ssh.conf" ]] || continue
+                sed -i -E 's/^[[:space:]]*Port[[:space:]]+/#Port /g' "$ssh_cfg"
+            done
+            if grep -qE '^[[:space:]]*Port[[:space:]]+' /etc/ssh/sshd_config.d/00-custom-ssh.conf 2>/dev/null; then
+                sed -i -E "s/^[[:space:]]*Port[[:space:]]+.*/Port ${new_p}/" /etc/ssh/sshd_config.d/00-custom-ssh.conf
+            else
+                echo "Port ${new_p}" >> /etc/ssh/sshd_config.d/00-custom-ssh.conf
+            fi
+            sshd -t || { cp -a "${bak}/." /etc/ssh/; rm -rf "$bak"; echo -e "${RED}Ошибка sshd -t.${NC}"; return 1; }
             ufw allow "${new_p}/tcp" comment 'SSH' >/dev/null
+            systemctl stop ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
+            systemctl reset-failed ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
             systemd-run --unit=ssh-port-rollback --on-active=180s /bin/bash -c "cp -a '${bak}/.' /etc/ssh/ && systemctl restart ${ssh_unit}" >/dev/null 2>&1 || true
             systemctl restart "$ssh_unit"
             echo -e "${YELLOW}Проверьте во 2-й вкладке Termius: ssh -p ${new_p} root@${SERVER_IP:-IP}${NC}"
             if read -t 170 -erp "Подключение работает? [y/N]: " ok && [[ "${ok:-N}" =~ ^[Yy]$ ]]; then
-                systemctl stop ssh-port-rollback.timer 2>/dev/null || true
+                systemctl stop ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
                 ufw delete allow "${old_p}/tcp" >/dev/null 2>&1 || true
-                sed -i "s|^port = .*|port = ${new_p}|" /etc/fail2ban/jail.local
-                systemctl restart fail2ban 2>/dev/null || true
-                source "${INSTALL_DIR}/lib/common.sh" && save_var SSH_PORT "$new_p"
+                if [[ -f /etc/fail2ban/jail.local ]]; then
+                    awk -v p="$new_p" '
+                        /^\[sshd\]/ { in_sshd=1 }
+                        /^\[/ && !/^\[sshd\]/ { in_sshd=0 }
+                        in_sshd && /^port[[:space:]]*=/ { $0 = "port = " p }
+                        { print }
+                    ' /etc/fail2ban/jail.local > /etc/fail2ban/jail.local.tmp \
+                        && mv /etc/fail2ban/jail.local.tmp /etc/fail2ban/jail.local
+                    systemctl restart fail2ban 2>/dev/null || true
+                fi
+                save_var SSH_PORT "$new_p"
                 /usr/local/sbin/update-antiscan.py >/dev/null 2>&1 || true
                 rm -rf "$bak"
                 echo -e "${GREEN}[OK] SSH перенесён на порт ${new_p}.${NC}"
             else
                 cp -a "${bak}/." /etc/ssh/ && systemctl restart "$ssh_unit"
-                systemctl stop ssh-port-rollback.timer 2>/dev/null || true
+                systemctl stop ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
                 ufw delete allow "${new_p}/tcp" >/dev/null 2>&1 || true
                 rm -rf "$bak"
                 echo -e "${YELLOW}Порт откатан на ${old_p}.${NC}"
@@ -630,8 +658,29 @@ self_update() {
     [[ -f "${INSTALL_DIR}/.repo" ]] || { echo -e "${RED}Файл ${INSTALL_DIR}/.repo не найден.${NC}"; return 1; }
     # shellcheck disable=SC1091
     source "${INSTALL_DIR}/.repo"
+    local mod watched=(03_security_stack 05_install_3xui 06_ai_routing 07_nginx_config)
+    local -A pre_hash=()
+    for mod in "${watched[@]}"; do
+        if [[ -f "${INSTALL_DIR}/modules/${mod}.sh" ]]; then
+            pre_hash["$mod"]=$(sha256sum "${INSTALL_DIR}/modules/${mod}.sh" | awk '{print $1}')
+        fi
+    done
     echo -e "${CYAN}Обновление модулей из ${GH_REPO} (${GH_BRANCH})...${NC}"
     GH_REPO="$GH_REPO" GH_BRANCH="$GH_BRANCH" bash <(curl -fsSL "https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/bootstrap.sh") --only 08_cli_and_audit
+    local changed=() after_h
+    for mod in "${watched[@]}"; do
+        if [[ -f "${INSTALL_DIR}/modules/${mod}.sh" ]]; then
+            after_h=$(sha256sum "${INSTALL_DIR}/modules/${mod}.sh" | awk '{print $1}')
+            [[ "${pre_hash[$mod]:-}" != "$after_h" ]] && changed+=("$mod")
+        fi
+    done
+    if (( ${#changed[@]} > 0 )); then
+        echo -e "\n${YELLOW}[INFO] Обновились модули конфигурации: ${changed[*]}${NC}"
+        echo "  Чтобы применить их изменения к системе, выполните при необходимости:"
+        for mod in "${changed[@]}"; do
+            echo "    my3xui run ${mod}"
+        done
+    fi
 }
 
 clean_server() {
@@ -739,7 +788,7 @@ case "${1:-}" in
                     mask_manage status
                     echo "  [1] list            [2] set cloud-storage   [3] set status-hub"
                     echo "  [4] set dev-docs    [5] set saas-analytics  [6] set tech-journal"
-                    echo "  [7] set random      [8] regen"
+                    echo "  [7] set random      [8] regen               [9] set reverse-proxy"
                     read -erp "  Действие mask: " mc
                     case "$mc" in
                         1) mask_manage list ;;
@@ -750,6 +799,7 @@ case "${1:-}" in
                         6) mask_manage set tech-journal ;;
                         7) mask_manage set random ;;
                         8) mask_manage regen ;;
+                        9) mask_manage set reverse-proxy ;;
                     esac
                     ;;
                 7) /usr/local/sbin/update-antiscan.py || true ;;

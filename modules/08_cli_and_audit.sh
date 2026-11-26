@@ -10,6 +10,12 @@ chmod 0755 /usr/local/bin/my3xui.tmp
 mv -f /usr/local/bin/my3xui.tmp /usr/local/bin/my3xui
 log_ok "Установлена утилита: /usr/local/bin/my3xui"
 
+if [[ -f "${BASE_DIR}/cli/3xui-node-geo-update" ]] && [[ -x /usr/local/x-ui/x-ui || -f /usr/local/sbin/3xui-node-geo-update ]]; then
+    sed "s|@BASE_DIR@|${BASE_DIR}|" "${BASE_DIR}/cli/3xui-node-geo-update" > /usr/local/sbin/3xui-node-geo-update.tmp
+    chmod 0755 /usr/local/sbin/3xui-node-geo-update.tmp
+    mv -f /usr/local/sbin/3xui-node-geo-update.tmp /usr/local/sbin/3xui-node-geo-update
+fi
+
 mkdir -p /etc/update-motd.d
 cat <<'EOF' > /etc/update-motd.d/99-my3xui
 #!/usr/bin/env bash
@@ -38,6 +44,8 @@ else
     log_warn "Панель не отдала ссылки клиента — в файле учётных данных только подписка."
 fi
 NO_LINK="(нет — возьмите из подписки)"
+SUB_JSON_URI="disabled"
+[[ -n "${SUB_JSON_PATH:-}" ]] && SUB_JSON_URI="https://${DOMAIN}/${SUB_JSON_PATH}/${SUB_ID}"
 
 INFO_FILE="/root/vps-credentials.txt"
 umask 077
@@ -51,6 +59,7 @@ SSH:         ssh -p ${SSH_PORT} root@${SERVER_IP}
 Пароль:      ${PANEL_PASS}
 
 Подписка:    https://${DOMAIN}/${SUB_PATH}/${SUB_ID}
+JSON-подп.:  ${SUB_JSON_URI}
 Happ Route:  ${HAPP_URI:-disabled}
 
 Reality PBK: ${REALITY_PUB}

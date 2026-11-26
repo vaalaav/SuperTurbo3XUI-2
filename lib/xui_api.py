@@ -586,9 +586,10 @@ def cmd_setup_node(args):
         "alpn": ["h2", "http/1.1"], "isDisabled": False, "isHidden": False,
     })
     # UUID клиента VLESS передаётся в поле id; неизвестное поле uuid панель отбрасывает и генерирует свой.
+    limit_ip = max(0, int(getattr(args, "limit_ip", "") or 0))
     api.add_client({
         "email": "user1", "id": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id,
-        "limitIp": 0, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0,
+        "limitIp": limit_ip, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0,
         "comment": "Primary client", "reset": 0,
     }, [rid, xid])
     api.restart_xray()
@@ -707,7 +708,7 @@ def main():
         "sub-port", "sub-path", "domain", "server-ip",
         "reality-priv", "reality-pub", "utls-fp", "xhttp-path",
         "client-uuid", "sub-id", "short-id-1", "short-id-2",
-        "enable-happ", "enable-geo-mirror", "geo-path",
+        "enable-happ", "enable-geo-mirror", "geo-path", "limit-ip",
     ):
         p1.add_argument(f"--{name}", default="")
 
