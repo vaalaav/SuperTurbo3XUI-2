@@ -472,13 +472,111 @@ class ArgumentFormTest(unittest.TestCase):
     def test_values_starting_with_dash_are_parsed_in_equals_form(self) -> None:
         got: dict[str, str] = {}
         orig_setup, orig_argv = xui_api.cmd_setup_node, sys.argv
-        xui_api.cmd_setup_node = lambda a: got.update(priv=a.reality_priv, pw=a.panel_pass)
+        xui_api.cmd_setup_node = lambda a: got.update(priv=a.reality_priv, pw=a.panel_pass, limit=a.limit_ip)
         try:
-            sys.argv = ["xui_api.py", "setup-node", "--reality-priv=-KgC_4cm", "--panel-pass=-Kq7!x#"]
+            sys.argv = ["xui_api.py", "setup-node", "--reality-priv=-KgC_4cm", "--panel-pass=-Kq7!x#", "--limit-ip=3"]
             xui_api.main()
         finally:
             xui_api.cmd_setup_node, sys.argv = orig_setup, orig_argv
-        self.assertEqual(got, {"priv": "-KgC_4cm", "pw": "-Kq7!x#"})
+        self.assertEqual(got, {"priv": "-KgC_4cm", "pw": "-Kq7!x#", "limit": "3"})
+
+
+class SetupNodeLimitIpTest(unittest.TestCase):
+    """setup-node передаёт limitIp клиента user1 в add_client."""
+
+    def _run_setup_capturing_client(self, limit_ip_arg: str) -> dict:
+        captured: dict = {}
+
+        class DummyApi:
+            def __init__(self, *_a: object) -> None:
+                pass
+
+            def login(self) -> None:
+                pass
+
+            def get_settings(self) -> dict:
+                return {}
+
+            def get_default_xray_template(self) -> dict:
+                return copy.deepcopy(DEFAULT_TPL)
+
+            def get_xray_template(self) -> dict:
+                return copy.deepcopy(DEFAULT_TPL)
+
+            def update_settings(self, _s: dict) -> None:
+                pass
+
+            def validate_geodata(self, _tokens: list[str], _kind: str) -> list:
+                return []
+
+            def update_xray_template(self, _tpl: dict) -> None:
+                pass
+
+            def list_clients(self) -> list:
+                return []
+
+            def list_inbounds(self) -> list:
+                return [
+                    {"id": 1, "tag": "inbound-reality-selfsteal", "port": 443},
+                    {"id": 2, "tag": "inbound-xhttp-packetup", "port": 11443},
+                ]
+
+            def add_inbound(self, _payload: dict) -> None:
+                pass
+
+            def delete_inbound(self, _inbound_id: int) -> None:
+                pass
+
+            def add_host_group(self, _payload: dict) -> None:
+                pass
+
+            def add_client(self, client: dict, _inbounds: list) -> None:
+                captured.update(client)
+
+            def restart_xray(self) -> None:
+                pass
+
+            def wait_xray_running(self) -> None:
+                pass
+
+            def client_links(self, _email: str) -> list[str]:
+                return [GOOD_REALITY, GOOD_XHTTP]
+
+        args = argparse.Namespace(
+            panel_port="41234",
+            panel_path="p",
+            panel_user="u",
+            panel_pass="pw",
+            sub_port="48123",
+            sub_path="sub",
+            domain=DOMAIN,
+            server_ip="203.0.113.10",
+            reality_priv="priv",
+            reality_pub="pub",
+            utls_fp="chrome",
+            xhttp_path="api/v2/x",
+            client_uuid=UUID,
+            sub_id="subid",
+            short_id_1="11111111",
+            short_id_2="2222222222222222",
+            enable_happ="false",
+            enable_geo_mirror="false",
+            geo_path="",
+            limit_ip=limit_ip_arg,
+        )
+        with (
+            mock.patch.object(xui_api, "XuiApiClient", DummyApi),
+            mock.patch.object(xui_api, "detect_country_label", return_value="🌐 Node"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            xui_api.cmd_setup_node(args)
+        return captured
+
+    def test_passes_explicit_limit_ip(self) -> None:
+        self.assertEqual(self._run_setup_capturing_client("3")["limitIp"], 3)
+
+    def test_defaults_limit_ip_to_zero(self) -> None:
+        self.assertEqual(self._run_setup_capturing_client("")["limitIp"], 0)
 
 
 if __name__ == "__main__":

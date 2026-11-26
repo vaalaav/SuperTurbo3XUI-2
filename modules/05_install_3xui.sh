@@ -7,6 +7,12 @@ load_state
 
 XUI_VERSION="${XUI_VERSION:-$XUI_DEFAULT_VERSION}"
 ENABLE_IP_LIMIT="${ENABLE_IP_LIMIT:-true}"
+if [[ "$ENABLE_IP_LIMIT" == "true" ]]; then
+    CLIENT_IP_LIMIT="${CLIENT_IP_LIMIT:-3}"
+    [[ "$CLIENT_IP_LIMIT" =~ ^[0-9]+$ ]] && (( CLIENT_IP_LIMIT > 0 )) || CLIENT_IP_LIMIT=3
+else
+    CLIENT_IP_LIMIT=0
+fi
 validate_xui_version "$XUI_VERSION"
 XUI_INSTALL_LOG="/var/log/3xui-node-xui-install.log"
 
@@ -59,6 +65,7 @@ version_ge "$XUI_VER" "$XUI_MIN_VERSION" \
     || log_err "После установки версия 3x-ui ${XUI_VER} ниже требуемой ${XUI_MIN_VERSION}."
 save_var XUI_VERSION "$XUI_VERSION"
 save_var ENABLE_IP_LIMIT "$ENABLE_IP_LIMIT"
+save_var CLIENT_IP_LIMIT "$CLIENT_IP_LIMIT"
 log_ok "Версия 3x-ui: ${XUI_VER}"
 
 mkdir -p /etc/systemd/system/x-ui.service.d
@@ -180,7 +187,8 @@ API_RES=$(python3 "${BASE_DIR}/lib/xui_api.py" setup-node \
     --short-id-2="${SHORT_ID_2}" \
     --enable-happ="${ENABLE_HAPP}" \
     --enable-geo-mirror="${ENABLE_GEO_MIRROR}" \
-    --geo-path="${GEO_PATH}")
+    --geo-path="${GEO_PATH}" \
+    --limit-ip="${CLIENT_IP_LIMIT}")
 
 log_ok "API 3x-ui: ${API_RES}"
 HAPP_URI=$(echo "$API_RES" | jq -r '.happ_uri // ""' 2>/dev/null || true)

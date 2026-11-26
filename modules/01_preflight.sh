@@ -196,6 +196,18 @@ EN_CS=${EN_CS:-"$CS_DEF"}
 ENABLE_CROWDSEC=$([[ "$EN_CS" =~ ^[Yy]$ ]] && echo "true" || echo "false")
 read -erp "   Лимит устройств на клиента (IP Limit 3x-ui через Fail2ban)? [Y/n]: " EN_IPL
 ENABLE_IP_LIMIT=$([[ "${EN_IPL:-Y}" =~ ^[Nn]$ ]] && echo "false" || echo "true")
+CLIENT_IP_LIMIT=0
+if [[ "$ENABLE_IP_LIMIT" == "true" ]]; then
+    while true; do
+        read -erp "   Максимум устройств (IP) на клиента user1 [3]: " IN_IPL
+        IN_IPL=${IN_IPL:-3}
+        if [[ "$IN_IPL" =~ ^[0-9]+$ ]] && (( IN_IPL >= 1 && IN_IPL <= 50 )); then
+            CLIENT_IP_LIMIT="$IN_IPL"
+            break
+        fi
+        echo -e "${RED}Введите число от 1 до 50.${NC}"
+    done
+fi
 
 # 10. Выход для Gemini через Psiphon
 echo -e "\n10. Выход для Gemini через Psiphon:"
@@ -267,6 +279,7 @@ save_var UTLS_FP "$UTLS_FP"
 save_var ENABLE_ANTISCAN "$ENABLE_ANTISCAN"
 save_var ENABLE_CROWDSEC "$ENABLE_CROWDSEC"
 save_var ENABLE_IP_LIMIT "$ENABLE_IP_LIMIT"
+save_var CLIENT_IP_LIMIT "$CLIENT_IP_LIMIT"
 save_var XUI_VERSION "$XUI_VERSION"
 save_var AI_MODE "$AI_MODE"
 save_var PSIPHON_REGION "$PSIPHON_REGION"
@@ -291,7 +304,7 @@ echo "  SSH порт:    ${SSH_PORT} (смена: ${SSH_PORT_CHANGED})"
 echo "  DNS ОС:      ${SYSTEM_DNS_MODE}"
 echo "  Заглушка:    ${MASK_TEMPLATE}"
 echo "  uTLS:        ${UTLS_FP}"
-echo "  Antiscan:    ${ENABLE_ANTISCAN} | CrowdSec: ${ENABLE_CROWDSEC} | IP Limit: ${ENABLE_IP_LIMIT}"
+echo "  Antiscan:    ${ENABLE_ANTISCAN} | CrowdSec: ${ENABLE_CROWDSEC} | IP Limit: ${ENABLE_IP_LIMIT} (${CLIENT_IP_LIMIT})"
 echo "  3x-ui:       ${XUI_VERSION}"
 echo "  AI-модуль:   ${AI_MODE}"
 echo "  Happ Route:  ${ENABLE_HAPP} | Geo-mirror: ${ENABLE_GEO_MIRROR}"

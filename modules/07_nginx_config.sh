@@ -245,10 +245,12 @@ http {
             proxy_set_header X-Forwarded-For \$remote_addr;
             proxy_set_header X-Forwarded-Proto \$scheme;
             proxy_intercept_errors off;
+            access_log off;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
             add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }
 
+        location = /${SUB_JSON_PATH:-__disabled__}  { return 404; }
         location = /${SUB_JSON_PATH:-__disabled__}/ { return 404; }
         location ^~ /${SUB_JSON_PATH:-__disabled__}/ {
             proxy_pass http://127.0.0.1:${SUB_PORT}/${SUB_JSON_PATH:-__disabled__}/;
@@ -256,6 +258,7 @@ http {
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$remote_addr;
+            access_log off;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
             add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }

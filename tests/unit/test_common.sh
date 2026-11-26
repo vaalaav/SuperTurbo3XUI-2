@@ -193,5 +193,55 @@ chmod +x "$MOCK_BIN/ss"
 check_not "wait_port_ready падает по таймауту, если порт не открылся" \
     bash -c 'PATH="'"$MOCK_BIN"':$PATH"; source "$1/lib/common.sh"; wait_port_ready 443 1 "Xray" 2>/dev/null' _ "$REPO"
 
+echo "my3xui ssh change-port (Fail2Ban jail.local и sshd_config.d)"
+SSH_TMP="$TMP/ssh_test"
+mkdir -p "$SSH_TMP/etc_ssh/sshd_config.d" "$SSH_TMP/bak_root"
+printf 'Include /etc/ssh/sshd_config.d/*.conf\nPort 22\n' > "$SSH_TMP/etc_ssh/sshd_config"
+printf 'Port 22\n' > "$SSH_TMP/etc_ssh/sshd_config.d/50-cloud-init.conf"
+printf 'Port 22\n' > "$SSH_TMP/etc_ssh/sshd_config.d/00-custom-ssh.conf"
+cat <<'EOF' > "$SSH_TMP/jail.local"
+[DEFAULT]
+banaction = nftables-multiport
+
+[sshd]
+enabled = true
+port = 22
+
+[nginx-botsearch]
+enabled = true
+port = http,https
+EOF
+cat <<'EOF' > "$MOCK_BIN/sshd"
+#!/usr/bin/env bash
+exit 0
+EOF
+cat <<'EOF' > "$MOCK_BIN/systemd-run"
+#!/usr/bin/env bash
+exit 0
+EOF
+cat <<'EOF' > "$MOCK_BIN/ss"
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$MOCK_BIN/sshd" "$MOCK_BIN/systemd-run" "$MOCK_BIN/ss"
+SSH_CLI="$TMP/my3xui_ssh"
+sed -e "s|/etc/ssh/sshd_config\.d/|${SSH_TMP}/etc_ssh/sshd_config.d/|g" \
+    -e "s|/etc/ssh/sshd_config|${SSH_TMP}/etc_ssh/sshd_config|g" \
+    -e "s|/etc/ssh|${SSH_TMP}/etc_ssh|g" \
+    -e "s|/root/ssh-bak-|${SSH_TMP}/bak_root/ssh-bak-|g" \
+    -e "s|/etc/fail2ban/jail\.local|${SSH_TMP}/jail.local|g" \
+    -e "s|/usr/local/sbin/update-antiscan.py|true|g" \
+    "$TEST_CLI" > "$SSH_CLI"
+chmod +x "$SSH_CLI"
+save_var SSH_PORT "22"
+printf '22222\ny\n' | env PATH="$MOCK_BIN:$PATH" STATE_DIR="$STATE_DIR" STATE_FILE="$STATE_FILE" \
+    BACKUP_ROOT="$BACKUP_ROOT" LOG_FILE="$LOG_FILE" "$SSH_CLI" ssh change-port >/dev/null
+check "change-port комментирует Port в 50-cloud-init.conf" grep -q '^#Port 22' "$SSH_TMP/etc_ssh/sshd_config.d/50-cloud-init.conf"
+check "change-port обновляет Port в 00-custom-ssh.conf" grep -qx 'Port 22222' "$SSH_TMP/etc_ssh/sshd_config.d/00-custom-ssh.conf"
+check "change-port обновляет port в [sshd]" \
+    awk '/^\[sshd\]/{f=1} /^\[/&&!/^\[sshd\]/{f=0} f&&/^port = 22222$/{ok=1} END{exit !ok}' "$SSH_TMP/jail.local"
+check "change-port сохраняет port = http,https в [nginx-botsearch]" \
+    awk '/^\[nginx-botsearch\]/{f=1} /^\[/&&!/^\[nginx-botsearch\]/{f=0} f&&/^port = http,https$/{ok=1} END{exit !ok}' "$SSH_TMP/jail.local"
+
 echo "итого: ${pass} ok, ${fail} FAIL"
 [[ $fail -eq 0 ]]
