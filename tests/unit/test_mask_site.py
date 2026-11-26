@@ -57,7 +57,7 @@ class MaskSiteTests(unittest.TestCase):
                 self.assertIn("Sitemap: https://portal.example.com/sitemap.xml", robots)
                 self.assertNotIn("Disallow: /\n", robots)
 
-                root = ET.fromstring((out_dir / "sitemap.xml").read_text(encoding="utf-8"))
+                root = ET.fromstring((out_dir / "sitemap.xml").read_text(encoding="utf-8"))  # noqa: S314
                 locs = [el.text for el in root.findall(".//{http://www.sitemaps.org/schemas/sitemap/0.9}loc")]
                 for page in manifest["pages"]:
                     self.assertIn(f"https://portal.example.com{page}", locs)
@@ -81,7 +81,7 @@ class MaskSiteTests(unittest.TestCase):
                         if file_path.suffix.lower() in {".json", ".webmanifest"}:
                             json.loads(text)
                         if file_path.suffix.lower() == ".xml":
-                            ET.fromstring(text)
+                            ET.fromstring(text)  # noqa: S314
                         if file_path.suffix.lower() == ".html":
                             for ld in re.findall(
                                 r'<script type="application/ld\+json">(.*?)</script>',
