@@ -111,6 +111,9 @@ my3xui info                 # CPU, RAM, Swap, NVMe/SSD/HDD, версии 3x-ui �
 my3xui creds                # URL панели, логин, пароль, подписка и ссылки vless://
 my3xui audit                # Порты, маскировка, TLS по IP и сквозная проверка Reality и XHTTP по ссылкам панели
 my3xui security             # Статус UFW, Fail2Ban, CrowdSec и счётчик antiscan
+my3xui security menu        # Интерактивное управление CrowdSec (вкл/выкл, удаление блокировок)
+my3xui security crowdsec enable|disable
+my3xui security crowdsec unban [ID|IP|CIDR|all]
 my3xui ssh status           # Порт SSH, ключи Termius, статус парольной авторизации
 my3xui ssh add-key          # Добавить публичный ключ 2-го устройства Termius
 my3xui ssh lock-password    # Отключить вход по паролю после проверки обоих устройств

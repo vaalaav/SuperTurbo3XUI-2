@@ -60,5 +60,115 @@ check     "найдены оба вызова xui_api.py (контроль, чт
 check     "нет формы «--опция \"значение\"»" test -z "$offenders"
 [[ -z "$offenders" ]] || echo "$offenders"
 
+echo "my3xui security (CrowdSec enable/disable и выборочное удаление блокировок)"
+MOCK_BIN="$TMP/bin"
+MOCK_LOG="$TMP/mock.log"
+MOCK_STATE="$TMP/mock_cs_active"
+mkdir -p "$MOCK_BIN"
+echo "active" > "$MOCK_STATE"
+: > "$MOCK_LOG"
+
+cat <<EOF > "$MOCK_BIN/systemctl"
+#!/usr/bin/env bash
+echo "systemctl \$*" >> "$MOCK_LOG"
+case "\$1" in
+    is-active)
+        if [[ "\${2:-}" == "--quiet" ]]; then
+            [[ "\$(cat "$MOCK_STATE")" == "active" ]]
+            exit \$?
+        fi
+        cat "$MOCK_STATE"
+        ;;
+    is-enabled)
+        [[ "\$(cat "$MOCK_STATE")" == "active" ]] && echo "enabled" || echo "disabled"
+        ;;
+    list-unit-files)
+        echo "crowdsec.service enabled"
+        echo "crowdsec-firewall-bouncer.service enabled"
+        ;;
+    enable)
+        echo "active" > "$MOCK_STATE"
+        ;;
+    disable)
+        echo "inactive" > "$MOCK_STATE"
+        ;;
+esac
+EOF
+
+cat <<EOF > "$MOCK_BIN/cscli"
+#!/usr/bin/env bash
+echo "cscli \$*" >> "$MOCK_LOG"
+if [[ "\$1 \$2 \$3" == "decisions list -o" && "\$4" == "json" ]]; then
+    cat <<'JSON'
+[{"id":1,"scenario":"crowdsecurity/ssh-bf","decisions":[{"id":42,"value":"185.220.101.5","type":"ban","duration":"3h","scenario":"crowdsecurity/ssh-bf"},{"id":43,"value":"45.155.205.91","type":"ban","duration":"2h","scenario":"crowdsecurity/http-probing"}]},{"id":2,"scenario":"manual","decisions":[{"id":44,"value":"91.240.118.0/24","type":"ban","duration":"1h"}]}]
+JSON
+elif [[ "\$1 \$2" == "decisions list" ]]; then
+    echo "ID 42 185.220.101.5 ban"
+elif [[ "\$1 \$2" == "decisions delete" ]]; then
+    echo "INFO 1 decision(s) deleted"
+fi
+EOF
+
+cat <<EOF > "$MOCK_BIN/nft"
+#!/usr/bin/env bash
+echo "nft \$*" >> "$MOCK_LOG"
+exit 0
+EOF
+
+cat <<'EOF' > "$MOCK_BIN/ufw"
+#!/usr/bin/env bash
+echo "Status: active"
+EOF
+
+cat <<'EOF' > "$MOCK_BIN/fail2ban-client"
+#!/usr/bin/env bash
+echo "Currently banned: 0"
+EOF
+
+chmod +x "$MOCK_BIN"/*
+
+TEST_CLI="$TMP/my3xui"
+sed -e 's|^\[\[ \$EUID -eq 0 \]\].*|true|' \
+    -e "s|^STATE_FILE=.*|STATE_FILE=\"${STATE_FILE}\"|" \
+    -e "s|^INSTALL_DIR=.*|INSTALL_DIR=\"${REPO}\"|" \
+    "${REPO}/cli/my3xui" > "$TEST_CLI"
+chmod +x "$TEST_CLI"
+
+save_var ENABLE_CROWDSEC "true"
+
+run_test_cli() {
+    env PATH="$MOCK_BIN:$PATH" STATE_DIR="$STATE_DIR" STATE_FILE="$STATE_FILE" \
+        BACKUP_ROOT="$BACKUP_ROOT" LOG_FILE="$LOG_FILE" "$TEST_CLI" "$@"
+}
+
+sec_on=$(run_test_cli security)
+check "security показывает ВКЛЮЧЁН при активном CrowdSec" grep -q "ВКЛЮЧЁН" <<<"$sec_on"
+
+run_test_cli security crowdsec disable >/dev/null
+unset ENABLE_CROWDSEC; load_state
+check "disable останавливает crowdsec и обновляет state.env" test "$ENABLE_CROWDSEC" == "false"
+check "disable останавливает bouncer" grep -q "systemctl disable --now crowdsec-firewall-bouncer" "$MOCK_LOG"
+check "disable чистит таблицу nft ip crowdsec" grep -q "nft delete table ip crowdsec" "$MOCK_LOG"
+
+sec_off=$(run_test_cli security)
+check "security показывает ОТКЛЮЧЁН после disable" grep -q "ОТКЛЮЧЁН" <<<"$sec_off"
+check_not "unban при выключенном CrowdSec завершается ошибкой" run_test_cli security crowdsec unban >/dev/null 2>&1
+
+run_test_cli security crowdsec enable >/dev/null
+unset ENABLE_CROWDSEC; load_state
+check "enable включает crowdsec и обновляет state.env" test "$ENABLE_CROWDSEC" == "true"
+
+: > "$MOCK_LOG"
+run_test_cli security crowdsec unban <<<"1,3" >/dev/null
+check "интерактивный unban 1,3 удаляет ID 42" grep -q "cscli decisions delete --id 42" "$MOCK_LOG"
+check "интерактивный unban 1,3 удаляет ID 44" grep -q "cscli decisions delete --id 44" "$MOCK_LOG"
+check_not "интерактивный unban 1,3 не удаляет ID 43" grep -q "cscli decisions delete --id 43" "$MOCK_LOG"
+
+: > "$MOCK_LOG"
+run_test_cli security crowdsec unban 43 1.2.3.4 10.0.0.0/24 >/dev/null
+check "CLI unban по ID" grep -q "cscli decisions delete --id 43" "$MOCK_LOG"
+check "CLI unban по IP" grep -q "cscli decisions delete --ip 1.2.3.4" "$MOCK_LOG"
+check "CLI unban по CIDR" grep -q "cscli decisions delete --range 10.0.0.0/24" "$MOCK_LOG"
+
 echo "итого: ${pass} ok, ${fail} FAIL"
 [[ $fail -eq 0 ]]

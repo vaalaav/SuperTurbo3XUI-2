@@ -166,7 +166,7 @@ flowchart LR
 | `my3xui creds` | Адрес панели, логин, пароль, подписка и ссылки |
 | `my3xui audit` | Полная проверка ноды и реального подключения через VPN |
 | `my3xui info` | Ресурсы сервера, версии 3x-ui и Xray |
-| `my3xui security` | Состояние файрвола, Fail2Ban, CrowdSec и антисканера |
+| `my3xui security` | Состояние файрвола, Fail2Ban, CrowdSec и антисканера (и управление CrowdSec) |
 | `my3xui ssh` | Порт SSH, ключи устройств, отключение входа по паролю |
 | `my3xui self-update` | Обновление скриптов проекта |
 | `my3xui clean` | Полное удаление с сохранением доступа по SSH |

@@ -60,6 +60,28 @@ show_creds() {
     echo ""
 }
 
+show_crowdsec_block() {
+    echo -e "\n${BOLD}[CrowdSec]${NC}"
+    if ! command -v cscli >/dev/null 2>&1; then
+        echo -e "  Статус: ${YELLOW}не установлен${NC}"
+        return 0
+    fi
+    local cs_act bnc_act cs_en
+    cs_act=$(systemctl is-active crowdsec 2>/dev/null || true)
+    bnc_act=$(systemctl is-active crowdsec-firewall-bouncer 2>/dev/null || true)
+    cs_en=$(systemctl is-enabled crowdsec 2>/dev/null || true)
+    if [[ "$cs_act" == "active" && "$bnc_act" == "active" ]]; then
+        echo -e "  Статус: ${GREEN}ВКЛЮЧЁН${NC} (crowdsec: ${cs_act}, bouncer: ${bnc_act})"
+    elif [[ "$cs_act" != "active" && "$bnc_act" != "active" ]]; then
+        echo -e "  Статус: ${YELLOW}ОТКЛЮЧЁН${NC} (crowdsec: ${cs_act:-inactive}, bouncer: ${bnc_act:-inactive}, autostart: ${cs_en:-disabled})"
+    else
+        echo -e "  Статус: ${YELLOW}ЧАСТИЧНО${NC} (crowdsec: ${cs_act:-inactive}, bouncer: ${bnc_act:-inactive})"
+    fi
+    if [[ "$cs_act" == "active" ]]; then
+        cscli decisions list 2>/dev/null || true
+    fi
+}
+
 show_security() {
     echo -e "\n${BOLD}${CYAN}=== БЕЗОПАСНОСТЬ И БЛОКИРОВКИ ===${NC}"
     echo -e "${BOLD}[UFW]${NC}"
@@ -67,10 +89,7 @@ show_security() {
     echo -e "\n${BOLD}[Fail2Ban]${NC}"
     fail2ban-client status sshd 2>/dev/null | grep -E 'Currently|Total' | sed 's/^/  sshd: /' || echo "  sshd: не активен"
     fail2ban-client status nginx-botsearch 2>/dev/null | grep -E 'Currently|Total' | sed 's/^/  nginx: /' || true
-    if command -v cscli >/dev/null 2>&1; then
-        echo -e "\n${BOLD}[CrowdSec]${NC}"
-        cscli decisions list 2>/dev/null || true
-    fi
+    show_crowdsec_block
     if nft list table inet antiscan >/dev/null 2>&1; then
         local cnt pkts
         cnt=$(nft list set inet antiscan scanners_v4 2>/dev/null | grep -c '/' || echo 0)
@@ -78,6 +97,264 @@ show_security() {
         echo -e "\n${BOLD}[Antiscan nftables]${NC} ~${cnt} сетей | отброшено: ${pkts}"
     fi
     echo ""
+}
+
+crowdsec_enable() {
+    if ! command -v cscli >/dev/null 2>&1; then
+        local ram_mb ans
+        ram_mb=$(awk '/^MemTotal:/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)
+        echo -e "${YELLOW}CrowdSec не установлен.${NC}"
+        if [[ "$ram_mb" -gt 0 && "$ram_mb" -lt 1200 ]]; then
+            echo -e "${YELLOW}Внимание: доступно ${ram_mb} МБ RAM (для CrowdSec рекомендуется от 1200 МБ).${NC}"
+        fi
+        if [[ -t 0 ]]; then
+            read -erp "Установить CrowdSec + nftables bouncer сейчас? [Y/n]: " ans
+            [[ "${ans:-Y}" =~ ^[Nn]$ ]] && { echo "Отменено."; return 0; }
+        fi
+        # shellcheck disable=SC1091
+        source "${INSTALL_DIR}/lib/common.sh"
+        if install_crowdsec; then
+            [[ -f "$STATE_FILE" ]] && save_var ENABLE_CROWDSEC "true"
+            return 0
+        fi
+        echo -e "${RED}[ERR] Не удалось установить CrowdSec.${NC}"
+        return 1
+    fi
+
+    local bouncer_unit=false
+    if systemctl list-unit-files crowdsec-firewall-bouncer.service 2>/dev/null | grep -q 'crowdsec-firewall-bouncer\.service'; then
+        bouncer_unit=true
+    fi
+
+    systemctl enable --now crowdsec >/dev/null 2>&1 || {
+        echo -e "${RED}[ERR] Не удалось запустить службу crowdsec.${NC}"
+        return 1
+    }
+    if $bouncer_unit; then
+        systemctl enable --now crowdsec-firewall-bouncer >/dev/null 2>&1 || \
+            echo -e "${YELLOW}[WARN] Не удалось запустить crowdsec-firewall-bouncer.${NC}"
+    fi
+    if [[ -f "$STATE_FILE" ]]; then
+        # shellcheck disable=SC1091
+        source "${INSTALL_DIR}/lib/common.sh" && save_var ENABLE_CROWDSEC "true"
+    fi
+    if systemctl is-active --quiet crowdsec; then
+        echo -e "${GREEN}[OK] CrowdSec включён.${NC}"
+    else
+        echo -e "${RED}[ERR] Служба crowdsec не запустилась.${NC}"
+        return 1
+    fi
+}
+
+crowdsec_disable() {
+    if ! command -v cscli >/dev/null 2>&1; then
+        echo -e "${YELLOW}CrowdSec не установлен.${NC}"
+        return 0
+    fi
+    systemctl disable --now crowdsec-firewall-bouncer >/dev/null 2>&1 || true
+    systemctl disable --now crowdsec >/dev/null 2>&1 || true
+    nft delete table ip crowdsec 2>/dev/null || true
+    nft delete table ip6 crowdsec 2>/dev/null || true
+    if [[ -f "$STATE_FILE" ]]; then
+        # shellcheck disable=SC1091
+        source "${INSTALL_DIR}/lib/common.sh" && save_var ENABLE_CROWDSEC "false"
+    fi
+    echo -e "${YELLOW}[OK] CrowdSec отключён (блокировки nftables сняты, настройки сохранены).${NC}"
+}
+
+_crowdsec_delete_decision() {
+    local flag="$1" val="$2" label="$3" out
+    if out=$(cscli decisions delete "$flag" "$val" 2>&1); then
+        if grep -qi 'no decision' <<<"$out"; then
+            echo -e "${YELLOW}[WARN] ${label}: запись не найдена или уже истекла.${NC}"
+        else
+            echo -e "${GREEN}[OK] Удалено: ${label}.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}[WARN] ${label}: ${out}${NC}"
+    fi
+}
+
+crowdsec_unban() {
+    if ! command -v cscli >/dev/null 2>&1; then
+        echo -e "${YELLOW}CrowdSec не установлен.${NC}"
+        return 1
+    fi
+    if ! systemctl is-active --quiet crowdsec; then
+        echo -e "${YELLOW}Служба CrowdSec отключена — управление блокировками недоступно, пока CrowdSec остановлен.${NC}"
+        return 1
+    fi
+
+    if [[ $# -gt 0 ]]; then
+        local yes=false arg out
+        local targets=()
+        for arg in "$@"; do
+            case "$arg" in
+                -y|--yes) yes=true ;;
+                *) targets+=("$arg") ;;
+            esac
+        done
+        if [[ ${#targets[@]} -eq 0 ]]; then
+            echo "Использование: my3xui security crowdsec unban [ID|IP|CIDR|all] [-y]"
+            return 1
+        fi
+        for arg in "${targets[@]}"; do
+            if [[ "$arg" == "all" ]]; then
+                if ! $yes; then
+                    local confirm=""
+                    read -erp "Удалить ВСЕ активные блокировки CrowdSec? [y/N]: " confirm
+                    [[ "${confirm:-N}" =~ ^[Yy]$ ]] || { echo "Отменено."; continue; }
+                fi
+                if out=$(cscli decisions delete --all 2>&1); then
+                    echo -e "${GREEN}[OK] Все активные блокировки CrowdSec удалены.${NC}"
+                else
+                    echo -e "${RED}[ERR] Не удалось удалить блокировки: ${out}${NC}"
+                    return 1
+                fi
+            elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+                _crowdsec_delete_decision "--id" "$arg" "ID:${arg}"
+            elif [[ "$arg" == */* && "$arg" != -* ]]; then
+                _crowdsec_delete_decision "--range" "$arg" "подсеть ${arg}"
+            elif [[ "$arg" != -* && "$arg" =~ ^[0-9a-fA-F:.]+$ ]]; then
+                _crowdsec_delete_decision "--ip" "$arg" "IP ${arg}"
+            else
+                echo -e "${RED}[ERR] Некорректный идентификатор или IP: ${arg}${NC}"
+                return 1
+            fi
+        done
+        return 0
+    fi
+
+    local raw_json list_out sel parsed
+    if ! raw_json=$(cscli decisions list -o json 2>&1); then
+        echo -e "${RED}[ERR] Не удалось получить список блокировок CrowdSec: ${raw_json}${NC}"
+        return 1
+    fi
+    if ! list_out=$(python3 "${INSTALL_DIR}/lib/crowdsec.py" list <<<"$raw_json" 2>&1); then
+        echo -e "${RED}[ERR] ${list_out}${NC}"
+        return 1
+    fi
+    if [[ -z "$list_out" ]]; then
+        echo -e "  Активных локальных блокировок CrowdSec нет."
+        return 0
+    fi
+
+    echo -e "\n${BOLD}Активные блокировки CrowdSec:${NC}"
+    echo "$list_out"
+    echo ""
+    read -erp "Номера (напр. 1 3, 1-3), IP или 'all' [Enter — отмена]: " sel
+    [[ -n "${sel// /}" && "$sel" != "0" && "$sel" != "q" ]] || { echo "Отменено."; return 0; }
+
+    if ! parsed=$(python3 "${INSTALL_DIR}/lib/crowdsec.py" select --query="$sel" <<<"$raw_json" 2>&1); then
+        echo -e "${RED}[ERR] ${parsed}${NC}"
+        return 1
+    fi
+
+    local is_all=false count=0 kind f1 f2
+    local ids=() vals=()
+    while IFS=$'\t' read -r kind f1 f2 _; do
+        if [[ "$kind" == "META" ]]; then
+            [[ "$f1" == "all" ]] && is_all=true
+            count="$f2"
+        elif [[ "$kind" == "ITEM" ]]; then
+            ids+=("$f1")
+            vals+=("$f2")
+        fi
+    done <<<"$parsed"
+
+    [[ ${#ids[@]} -gt 0 ]] || { echo "Отменено."; return 0; }
+
+    if $is_all; then
+        local confirm=""
+        read -erp "Удалить ВСЕ перечисленные блокировки (${count} шт.)? [y/N]: " confirm
+        [[ "${confirm:-N}" =~ ^[Yy]$ ]] || { echo "Отменено."; return 0; }
+    fi
+
+    local i
+    for i in "${!ids[@]}"; do
+        _crowdsec_delete_decision "--id" "${ids[$i]}" "ID:${ids[$i]} (${vals[$i]})"
+    done
+}
+
+security_menu() {
+    while true; do
+        echo "  [1] Обновить статус          [2] Включить CrowdSec"
+        echo "  [3] Отключить CrowdSec       [4] Удалить блокировки CrowdSec"
+        echo "  [0] Назад"
+        read -erp "  Действие (Безопасность): " sc
+        case "${sc:-0}" in
+            1) show_security ;;
+            2) crowdsec_enable || true ;;
+            3) crowdsec_disable || true ;;
+            4) crowdsec_unban || true ;;
+            0|"") break ;;
+            *) echo -e "${YELLOW}Неизвестный выбор.${NC}" ;;
+        esac
+    done
+}
+
+crowdsec_manage() {
+    local sub="${1:-menu}"
+    [[ $# -gt 0 ]] && shift
+    case "$sub" in
+        status)
+            show_crowdsec_block
+            echo ""
+            ;;
+        enable|on)
+            crowdsec_enable
+            ;;
+        disable|off)
+            crowdsec_disable
+            ;;
+        unban|delete|del)
+            crowdsec_unban "$@"
+            ;;
+        menu)
+            if [[ -t 0 ]]; then
+                show_crowdsec_block
+                echo ""
+                security_menu
+            else
+                show_crowdsec_block
+                echo ""
+            fi
+            ;;
+        *)
+            echo "Использование: my3xui security crowdsec [status|enable|disable|unban [ID|IP|CIDR|all]]"
+            return 1
+            ;;
+    esac
+}
+
+security_manage() {
+    local sub="${1:-status}"
+    [[ $# -gt 0 ]] && shift
+    case "$sub" in
+        status)
+            show_security
+            ;;
+        menu)
+            show_security
+            security_menu
+            ;;
+        crowdsec|cs)
+            crowdsec_manage "$@"
+            ;;
+        enable|on)
+            crowdsec_enable
+            ;;
+        disable|off)
+            crowdsec_disable
+            ;;
+        unban|delete|del)
+            crowdsec_unban "$@"
+            ;;
+        *)
+            echo "Использование: my3xui security [status|menu|crowdsec <status|enable|disable|unban>]"
+            return 1
+            ;;
+    esac
 }
 
 run_audit() {
@@ -324,7 +601,7 @@ clean_server() {
 case "${1:-}" in
     info)            show_info ;;
     creds)           show_creds ;;
-    security)        show_security ;;
+    security)        shift; security_manage "$@" ;;
     audit)           run_audit ;;
     ssh)             ssh_manage "${2:-status}" ;;
     update-scanners) /usr/local/sbin/update-antiscan.py ;;
@@ -349,7 +626,7 @@ case "${1:-}" in
             case "$ch" in
                 1) show_info ;;
                 2) show_creds ;;
-                3) show_security ;;
+                3) show_security; security_menu ;;
                 4) run_audit ;;
                 5)
                     echo "  [1] status  [2] add-key  [3] lock-password"
