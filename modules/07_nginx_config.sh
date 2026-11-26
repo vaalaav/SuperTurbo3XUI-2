@@ -218,6 +218,16 @@ http {
         error_page 400 403 404 405 @notfound;
 
         location = /${PANEL_PATH} { return 301 /${PANEL_PATH}/; }
+        location ^~ /${PANEL_PATH}/assets/ {
+            proxy_pass http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/assets/;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$remote_addr;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_intercept_errors off;
+            access_log off;
+        }
         location ^~ /${PANEL_PATH}/ {
             proxy_pass http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/;
             proxy_http_version 1.1;

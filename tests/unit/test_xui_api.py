@@ -258,8 +258,8 @@ class ConfigureAiPsiphonTest(unittest.TestCase):
         res = self.run_configure("psiphon")
         self.assertEqual(res["applied"], ["psiphon-out"])
         out = next(o for o in FakeXrayPanel.template["outbounds"] if o["tag"] == "psiphon-out")
-        # Форма с массивом servers — наследие V2Ray, убранное из документации Xray.
-        self.assertEqual(out["settings"], {"address": "127.0.0.1", "port": 1080})
+        # 3x-ui 3.11 проверяет TCP-доступность исходящего только по settings.servers[].
+        self.assertEqual(out["settings"], {"servers": [{"address": "127.0.0.1", "port": 1080}]})
 
     def test_gemini_tcp_goes_to_psiphon_and_udp_is_blocked_right_after_api(self) -> None:
         self.run_configure("psiphon", ip_detect="true")
@@ -577,6 +577,61 @@ class SetupNodeLimitIpTest(unittest.TestCase):
 
     def test_defaults_limit_ip_to_zero(self) -> None:
         self.assertEqual(self._run_setup_capturing_client("")["limitIp"], 0)
+
+
+class DetectCountryLabelTest(unittest.TestCase):
+    """Определение страны сервера по IP с резервными GeoIP-источниками."""
+
+    @staticmethod
+    def _fake_urlopen(mapping: dict[str, dict | Exception]):
+        class _Resp:
+            def __init__(self, payload: dict) -> None:
+                self._raw = json.dumps(payload).encode("utf-8")
+
+            def read(self) -> bytes:
+                return self._raw
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def _open(req, timeout=6):
+            _ = timeout
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            for prefix, outcome in mapping.items():
+                if url.startswith(prefix):
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    return _Resp(outcome)
+            raise RuntimeError(f"Unexpected URL: {url}")
+
+        return _open
+
+    def test_prefers_ipinfo_nl_over_stale_ip_api(self) -> None:
+        fake = self._fake_urlopen(
+            {
+                "https://ipinfo.io/": {"country": "NL"},
+                "http://ip-api.com/": {"status": "success", "country": "Germany", "countryCode": "DE"},
+            }
+        )
+        with mock.patch.object(xui_api.urllib.request, "urlopen", side_effect=fake):
+            self.assertEqual(xui_api.detect_country_label("177.202.70.160"), "🇳🇱 Нидерланды")
+
+    def test_falls_back_to_ipwho_and_ip_api(self) -> None:
+        fake = self._fake_urlopen(
+            {
+                "https://ipinfo.io/": RuntimeError("timeout"),
+                "https://ipwho.is/": {"success": True, "country": "Finland", "country_code": "FI"},
+            }
+        )
+        with mock.patch.object(xui_api.urllib.request, "urlopen", side_effect=fake):
+            self.assertEqual(xui_api.detect_country_label("203.0.113.10"), "🇫🇮 Финляндия")
+
+    def test_returns_node_when_all_providers_fail(self) -> None:
+        with mock.patch.object(xui_api.urllib.request, "urlopen", side_effect=RuntimeError("offline")):
+            self.assertEqual(xui_api.detect_country_label("203.0.113.10"), "🌐 Node")
 
 
 if __name__ == "__main__":
