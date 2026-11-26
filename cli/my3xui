@@ -359,7 +359,26 @@ security_manage() {
 
 run_audit() {
     echo -e "\n${BOLD}${CYAN}=== АУДИТ НОДЫ (${DOMAIN:-N/A}) ===${NC}"
-    local ok="${GREEN}[OK]${NC}" bad="${RED}[FAIL]${NC}"
+    local ok="${GREEN}[OK]${NC}" bad="${RED}[FAIL]${NC}" warn="${YELLOW}[WARN]${NC}"
+
+    local svc
+    for svc in x-ui nginx fail2ban; do
+        systemctl is-active --quiet "$svc" \
+            && echo -e "  ${ok} Служба ${svc} активна" \
+            || echo -e "  ${bad} Служба ${svc} не активна"
+    done
+    if [[ "${ENABLE_CROWDSEC:-false}" == "true" ]]; then
+        for svc in crowdsec crowdsec-firewall-bouncer; do
+            systemctl is-active --quiet "$svc" \
+                && echo -e "  ${ok} Служба ${svc} активна" \
+                || echo -e "  ${bad} Служба ${svc} не активна"
+        done
+    fi
+    if [[ "${SYSTEM_DNS_MODE:-dot}" == "doh" ]]; then
+        systemctl is-active --quiet 3xui-node-doh \
+            && echo -e "  ${ok} Локальный DoH (3xui-node-doh) активен" \
+            || echo -e "  ${bad} Локальный DoH (3xui-node-doh) не активен"
+    fi
 
     ss -tlnp | grep -q ':443 ' && echo -e "  ${ok} Xray слушает порт 443" || echo -e "  ${bad} Порт 443 не слушается"
     ss -tlnp | grep -q '127.0.0.1:8443' && echo -e "  ${ok} Nginx слушает 127.0.0.1:8443" || echo -e "  ${bad} Nginx 8443 не слушается"
@@ -367,9 +386,56 @@ run_audit() {
     nginx -t >/dev/null 2>&1 && echo -e "  ${ok} nginx -t валиден" || echo -e "  ${bad} Ошибка nginx -t"
 
     if [[ -n "${DOMAIN:-}" ]]; then
-        local code
+        local code cert_file="/etc/nginx/ssl/${DOMAIN}/fullchain.pem"
         code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 6 --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/" || echo "000")
         [[ "$code" == "200" ]] && echo -e "  ${ok} Маскировка https://${DOMAIN}/ -> HTTP ${code}" || echo -e "  ${bad} Маскировка вернула HTTP ${code}"
+
+        if [[ -f "$cert_file" ]]; then
+            local end_date
+            end_date=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2- || true)
+            if ! openssl x509 -in "$cert_file" -noout -checkend 0 >/dev/null 2>&1; then
+                echo -e "  ${bad} SSL-сертификат истёк (${end_date:-?})"
+            elif ! openssl x509 -in "$cert_file" -noout -checkend 1209600 >/dev/null 2>&1; then
+                echo -e "  ${warn} SSL-сертификат истекает < 14 дней (${end_date:-?})"
+            else
+                echo -e "  ${ok} SSL-сертификат действителен (до ${end_date:-?})"
+            fi
+        fi
+        if systemctl list-unit-files certbot.timer >/dev/null 2>&1; then
+            systemctl is-active --quiet certbot.timer \
+                && echo -e "  ${ok} Таймер автопродления certbot.timer активен" \
+                || echo -e "  ${warn} Таймер certbot.timer не активен"
+        fi
+
+        if [[ -n "${SUB_PATH:-}" && -n "${SUB_ID:-}" ]]; then
+            local sub_tmp sub_code
+            sub_tmp=$(mktemp)
+            local -a curl_sub=(-s -o "$sub_tmp" -w "%{http_code}" --max-time 6 --resolve "${DOMAIN}:443:127.0.0.1")
+            if [[ -f "$cert_file" ]]; then
+                curl_sub+=(--cacert "$cert_file")
+            else
+                curl_sub+=(-k)
+            fi
+            sub_code=$(curl "${curl_sub[@]}" "https://${DOMAIN}/${SUB_PATH}/${SUB_ID}" || echo "000")
+            if [[ "$sub_code" == "200" && -s "$sub_tmp" ]]; then
+                echo -e "  ${ok} Подписка https://${DOMAIN}/${SUB_PATH}/... доступна (HTTP 200)"
+            else
+                echo -e "  ${bad} Подписка вернула HTTP ${sub_code}"
+            fi
+            rm -f "$sub_tmp"
+        fi
+
+        if [[ -n "${SERVER_IP:-}" ]]; then
+            local dns_a
+            dns_a=$(curl -fsSL --max-time 4 -H 'accept: application/dns-json' \
+                "https://cloudflare-dns.com/dns-query?name=${DOMAIN}&type=A" 2>/dev/null \
+                | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join(a['data'] for a in d.get('Answer',[]) if a.get('type')==1))" 2>/dev/null || true)
+            if [[ "$dns_a" == "$SERVER_IP" ]]; then
+                echo -e "  ${ok} DNS A-запись: ${DOMAIN} -> ${SERVER_IP}"
+            else
+                echo -e "  ${warn} DNS A-запись ${DOMAIN}: ${dns_a:-пусто} (ожидается ${SERVER_IP})"
+            fi
+        fi
     fi
 
     # Geo-файлы обновляются таймером; упавший запуск виден как failed.
@@ -654,6 +720,68 @@ mask_manage() {
     esac
 }
 
+node_backup() {
+    local out_arg="${1:-}"
+    # shellcheck disable=SC1091
+    source "${INSTALL_DIR}/lib/common.sh"
+    local ts out_file stage
+    ts=$(date +%Y%m%d-%H%M%S)
+    if [[ -n "$out_arg" ]]; then
+        if [[ -d "$out_arg" ]]; then
+            out_file="${out_arg%/}/node-backup-${ts}.tar.gz"
+        else
+            mkdir -p "$(dirname "$out_arg")"
+            out_file="$out_arg"
+        fi
+    else
+        mkdir -p "$BACKUP_ROOT"
+        chmod 700 "$BACKUP_ROOT"
+        out_file="${BACKUP_ROOT}/node-backup-${ts}.tar.gz"
+    fi
+
+    stage=$(mktemp -d)
+    mkdir -p "${stage}/etc" "${stage}/root"
+
+    local state_dir
+    state_dir=$(dirname "$STATE_FILE")
+    [[ -d "$state_dir" ]] && cp -a "$state_dir" "${stage}/etc/" 2>/dev/null || true
+
+    if [[ -d /etc/x-ui ]]; then
+        mkdir -p "${stage}/etc/x-ui"
+        if [[ -f /etc/x-ui/x-ui.db ]] && command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 /etc/x-ui/x-ui.db ".backup '${stage}/etc/x-ui/x-ui.db'"
+        elif [[ -f /etc/x-ui/x-ui.db ]]; then
+            cp -a /etc/x-ui/x-ui.db "${stage}/etc/x-ui/"
+        fi
+        local item
+        for item in /etc/x-ui/*; do
+            [[ -e "$item" ]] || continue
+            case "$(basename "$item")" in
+                x-ui.db|x-ui.db-wal|x-ui.db-shm) continue ;;
+                *) cp -a "$item" "${stage}/etc/x-ui/" ;;
+            esac
+        done
+    fi
+
+    [[ -d /etc/ssh/sshd_config.d ]] && mkdir -p "${stage}/etc/ssh" && cp -a /etc/ssh/sshd_config.d "${stage}/etc/ssh/"
+    [[ -f /root/.ssh/authorized_keys ]] && mkdir -p "${stage}/root/.ssh" && cp -a /root/.ssh/authorized_keys "${stage}/root/.ssh/"
+    [[ -f /etc/3xui-antiscan-allow.txt ]] && cp -a /etc/3xui-antiscan-allow.txt "${stage}/etc/"
+    [[ -d /etc/letsencrypt ]] && cp -a /etc/letsencrypt "${stage}/etc/"
+    [[ -f "$INFO_FILE" ]] && cp -a "$INFO_FILE" "${stage}/root/"
+
+    (umask 077 && tar -czf "$out_file" -C "$stage" .)
+    chmod 600 "$out_file"
+    rm -rf "$stage"
+
+    if [[ -z "$out_arg" ]]; then
+        find "$BACKUP_ROOT" -maxdepth 1 -type f -name 'node-backup-*.tar.gz' | sort | head -n -5 | xargs -r rm -f --
+    fi
+
+    local sz
+    sz=$(du -h "$out_file" | awk '{print $1}')
+    echo -e "${GREEN}[OK] Резервная копия сохранена: ${out_file} (${sz})${NC}"
+}
+
 self_update() {
     [[ -f "${INSTALL_DIR}/.repo" ]] || { echo -e "${RED}Файл ${INSTALL_DIR}/.repo не найден.${NC}"; return 1; }
     # shellcheck disable=SC1091
@@ -748,6 +876,7 @@ case "${1:-}" in
     ssh)             ssh_manage "${2:-status}" ;;
     mask)            mask_manage "${2:-status}" "${3:-}" "${4:-}" ;;
     update-scanners) /usr/local/sbin/update-antiscan.py ;;
+    backup)          shift; node_backup "${1:-}" ;;
     run)             bash "${INSTALL_DIR}/install.sh" --only "${2:-}" ;;
     self-update)     self_update ;;
     clean)           clean_server ;;
@@ -763,10 +892,11 @@ case "${1:-}" in
             echo "  5. Управление SSH (ключи / порт / пароль)"
             echo "  6. Маскировка домена (шаблон сайта)"
             echo "  7. Обновить списки сканеров"
-            echo "  8. Обновить модули из GitHub"
-            echo -e "  9. ${RED}Полная очистка сервера${NC}"
+            echo "  8. Создать резервную копию ноды"
+            echo "  9. Обновить модули из GitHub"
+            echo -e " 10. ${RED}Полная очистка сервера${NC}"
             echo "  0. Выход"
-            read -erp "Выбор [0-9]: " ch
+            read -erp "Выбор [0-10]: " ch
             case "$ch" in
                 1) show_info ;;
                 2) show_creds ;;
@@ -803,8 +933,9 @@ case "${1:-}" in
                     esac
                     ;;
                 7) /usr/local/sbin/update-antiscan.py || true ;;
-                8) self_update ;;
-                9) clean_server ;;
+                8) node_backup ;;
+                9) self_update ;;
+                10) clean_server ;;
                 0) exit 0 ;;
             esac
         done

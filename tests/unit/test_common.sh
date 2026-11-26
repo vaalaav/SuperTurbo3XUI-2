@@ -243,5 +243,37 @@ check "change-port обновляет port в [sshd]" \
 check "change-port сохраняет port = http,https в [nginx-botsearch]" \
     awk '/^\[nginx-botsearch\]/{f=1} /^\[/&&!/^\[nginx-botsearch\]/{f=0} f&&/^port = http,https$/{ok=1} END{exit !ok}' "$SSH_TMP/jail.local"
 
+echo "backup_path ротация и my3xui backup"
+ROT_SRC="$TMP/rot_src"
+mkdir -p "$ROT_SRC"
+echo "data" > "$ROT_SRC/file.txt"
+for i in 1 2 3 4 5 6 7; do
+    mkdir -p "${BACKUP_ROOT}/rot-20260101-00000${i}"
+done
+backup_path "$ROT_SRC" "rot" 5 >/dev/null
+rot_count=$(find "$BACKUP_ROOT" -maxdepth 1 -type d -name 'rot-*' | wc -l)
+check "backup_path оставляет ровно 5 последних копий по тегу" test "$rot_count" -eq 5
+
+BK_TMP="$TMP/bk_test"
+mkdir -p "$BK_TMP/etc_xui" "$BK_TMP/bak"
+python3 -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("CREATE TABLE t(x INT)"); c.commit(); c.close()' "$BK_TMP/etc_xui/x-ui.db"
+echo "ssh-ed25519 AAAA test@host" > "$BK_TMP/auth_keys"
+BK_CLI="$TMP/my3xui_bk"
+sed -e "s|/etc/x-ui|${BK_TMP}/etc_xui|g" \
+    -e "s|/root/.ssh/authorized_keys|${BK_TMP}/auth_keys|g" \
+    -e "s|/etc/ssh/sshd_config\.d|${BK_TMP}/none_sshd|g" \
+    -e "s|/etc/3xui-antiscan-allow\.txt|${BK_TMP}/none_allow|g" \
+    -e "s|/etc/letsencrypt|${BK_TMP}/none_le|g" \
+    -e "s|/root/vps-credentials\.txt|${BK_TMP}/none_creds|g" \
+    "$TEST_CLI" > "$BK_CLI"
+chmod +x "$BK_CLI"
+BK_OUT="$BK_TMP/bak/node.tar.gz"
+env PATH="$MOCK_BIN:$PATH" STATE_DIR="$STATE_DIR" STATE_FILE="$STATE_FILE" \
+    BACKUP_ROOT="$BACKUP_ROOT" LOG_FILE="$LOG_FILE" "$BK_CLI" backup "$BK_OUT" >/dev/null
+check "my3xui backup создаёт архив" test -s "$BK_OUT"
+check "архив backup имеет права 600" test "$(stat -c %a "$BK_OUT")" == 600
+check "архив содержит state.env и x-ui.db" \
+    bash -c 'tar -tzf "$1" | grep -q "state\.env" && tar -tzf "$1" | grep -q "x-ui\.db"' _ "$BK_OUT"
+
 echo "итого: ${pass} ok, ${fail} FAIL"
 [[ $fail -eq 0 ]]
