@@ -189,6 +189,19 @@ wait_xui_ready() {
     log_err "Панель 3x-ui не ответила на 127.0.0.1:${PANEL_PORT} за ${timeout} с — смотрите journalctl -u x-ui."
 }
 
+# Ждёт, пока локальный сервис начнёт слушать указанный TCP-порт.
+wait_port_ready() {
+    local port="$1" timeout="${2:-30}" label="${3:-Сервис}"
+    local tries=$(( timeout * 2 ))
+    for (( i = 0; i < tries; i++ )); do
+        if ! is_port_free "$port"; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    log_err "${label} не начал слушать порт ${port} за ${timeout} с — смотрите journalctl -u x-ui."
+}
+
 # Перезапуск панели с ожиданием готовности.
 restart_xui() {
     systemctl restart x-ui

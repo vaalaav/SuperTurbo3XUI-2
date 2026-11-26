@@ -41,7 +41,11 @@ printf "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 9
 chmod 644 /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx
 
 apt-get update -qq
-apt-get install -y -qq -o Dpkg::Options::="--force-confmiss" nginx
+if dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q "install ok installed" && [[ ! -f /etc/nginx/mime.types ]]; then
+    apt-get install --reinstall -y -qq -o Dpkg::Options::="--force-confmiss" nginx
+else
+    apt-get install -y -qq -o Dpkg::Options::="--force-confmiss" nginx
+fi
 id -u www-data >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin www-data
 
 TOTAL_RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)

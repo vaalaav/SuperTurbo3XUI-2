@@ -315,4 +315,9 @@ fi
 systemctl enable --now nginx >/dev/null 2>&1
 systemctl restart nginx
 restart_xui
+# restart_xui ждёт только порт панели, а Xray открывает 443 и sub-сервер чуть позже (после загрузки geo-файлов).
+wait_port_ready 443 30 "Xray"
+if [[ -n "${SUB_PORT:-}" ]]; then
+    wait_port_ready "${SUB_PORT}" 30 "Сервер подписки 3x-ui"
+fi
 log_ok "Nginx (127.0.0.1:8443) и Xray/3x-ui (0.0.0.0:443) запущены."
