@@ -16,6 +16,11 @@ if [[ -f "${BASE_DIR}/cli/3xui-node-geo-update" ]] && [[ -x /usr/local/x-ui/x-ui
     mv -f /usr/local/sbin/3xui-node-geo-update.tmp /usr/local/sbin/3xui-node-geo-update
 fi
 
+if [[ -f "${BASE_DIR}/lib/update_antiscan.py" && -f /usr/local/sbin/update-antiscan.py ]]; then
+    install -m 0755 "${BASE_DIR}/lib/update_antiscan.py" /usr/local/sbin/update-antiscan.py.tmp
+    mv -f /usr/local/sbin/update-antiscan.py.tmp /usr/local/sbin/update-antiscan.py
+fi
+
 mkdir -p /etc/update-motd.d
 cat <<'EOF' > /etc/update-motd.d/99-my3xui
 #!/usr/bin/env bash

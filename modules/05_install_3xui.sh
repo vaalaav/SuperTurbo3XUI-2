@@ -81,8 +81,6 @@ systemctl daemon-reload
 systemctl stop x-ui 2>/dev/null || true
 XUI_DB_BACKUP=$(backup_path /etc/x-ui "x-ui-pre-setup")
 [[ -n "$XUI_DB_BACKUP" && -d "${XUI_DB_BACKUP}/x-ui" ]] || log_err "Не удалось сделать копию /etc/x-ui перед настройкой."
-# Хранятся пять последних копий перед настройкой.
-find "$BACKUP_ROOT" -maxdepth 1 -type d -name 'x-ui-pre-setup-*' | sort | head -n -5 | xargs -r rm -rf --
 log_info "Копия базы панели перед настройкой: ${XUI_DB_BACKUP}"
 
 rollback_xui_db() {

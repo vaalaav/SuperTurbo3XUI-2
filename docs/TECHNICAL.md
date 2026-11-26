@@ -82,6 +82,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 ├── lib/
 │   ├── common.sh              # Логи, state.env, бэкапы, SSH, версия 3x-ui, API-токен
 │   ├── mask_site.py           # Генератор и деплойер многостраничных порталов маскировки
+│   ├── update_antiscan.py     # Обновление nftables-антисканера
 │   ├── xui_api.py             # Работа с 3x-ui >= 3.11.0 через REST API
 │   ├── xray_client.py         # Проверка профиля по ссылке vless:// временным клиентом Xray
 │   └── xui_v311_post.py       # Настройки подписки (JSON, Happ/INCY)
@@ -120,6 +121,7 @@ my3xui ssh add-key          # Добавить публичный ключ 2-г�
 my3xui ssh lock-password    # Отключить вход по паролю после проверки обоих устройств
 my3xui mask status          # Текущий портал маскировки, бренд и файлы
 my3xui mask set <шаблон>    # Переключить портал (cloud-storage|status-hub|dev-docs|saas-analytics|tech-journal|random|reverse-proxy)
+my3xui backup [путь]        # Архив с state.env, базой 3x-ui, ключами SSH и сертификатами
 my3xui run 07_nginx_config  # Перезапустить отдельный модуль
 my3xui self-update          # Обновить модули из GitHub
 my3xui clean                # Полная очистка сервера (с сохранением SSH)

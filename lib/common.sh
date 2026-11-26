@@ -67,12 +67,16 @@ load_state() {
 backup_path() {
     local target="$1"
     local tag="${2:-auto}"
+    local keep="${3:-5}"
     [[ -e "$target" ]] || return 0
     local ts
     ts=$(date +%Y%m%d-%H%M%S)
     local dst="${BACKUP_ROOT}/${tag}-${ts}"
     mkdir -p "$dst"
     cp -a "$target" "$dst/" 2>/dev/null || true
+    if [[ "$keep" =~ ^[0-9]+$ ]] && (( keep > 0 )); then
+        find "$BACKUP_ROOT" -maxdepth 1 -type d -name "${tag}-*" | sort | head -n -"$keep" | xargs -r rm -rf --
+    fi
     echo "$dst"
 }
 
