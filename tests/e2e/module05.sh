@@ -241,7 +241,7 @@ scenario_psiphon() {
 
     local tpl
     tpl=$(panel_api "$(state_get XUI_API_TOKEN)" /panel/api/xray/ -X POST | jq -r '.obj | (fromjson? // .) | .xraySetting | (fromjson? // .)')
-    jq -e '.outbounds[] | select(.tag == "psiphon-out") | .settings == {"address": "127.0.0.1", "port": 1080}' <<<"$tpl" >/dev/null \
+    jq -e '.outbounds[] | select(.tag == "psiphon-out") | .settings == {"servers": [{"address": "127.0.0.1", "port": 1080}]}' <<<"$tpl" >/dev/null \
         || die "в шаблоне нет корректного аутбаунда psiphon-out"
     jq -e '[.routing.rules[] | select(.outboundTag == "psiphon-out" and .network == "tcp")] | length == 1' <<<"$tpl" >/dev/null \
         || die "нет правила Gemini → psiphon-out"

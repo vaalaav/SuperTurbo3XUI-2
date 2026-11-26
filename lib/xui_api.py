@@ -217,20 +217,29 @@ def detect_country_label(server_ip: str) -> str:
         "LV": "Латвия", "LT": "Литва", "US": "США", "SG": "Сингапур", "JP": "Япония",
         "CH": "Швейцария", "AT": "Австрия", "CZ": "Чехия", "TR": "Турция", "KZ": "Казахстан",
     }
-    try:
-        req = urllib.request.Request(
+    providers = (
+        (f"https://ipinfo.io/{server_ip}/json", lambda d: (d.get("country"), d.get("country"))),
+        (
+            f"https://ipwho.is/{server_ip}",
+            lambda d: (d.get("country_code") if d.get("success") else "", d.get("country")),
+        ),
+        (
             f"http://ip-api.com/json/{server_ip}?fields=status,country,countryCode",
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
-        with urllib.request.urlopen(req, timeout=6) as r:
-            d = json.loads(r.read().decode("utf-8"))
-            if d.get("status") == "success":
-                code = (d.get("countryCode") or "").upper()
+            lambda d: (d.get("countryCode") if d.get("status") == "success" else "", d.get("country")),
+        ),
+    )
+    for url, extract in providers:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                d = json.loads(r.read().decode("utf-8"))
+                raw_code, raw_name = extract(d)
+                code = (raw_code or "").strip().upper()
                 if len(code) == 2 and code.isalpha():
                     flag = "".join(chr(0x1F1E6 + ord(ch) - ord("A")) for ch in code)
-                    return f"{flag} {names_ru.get(code, d.get('country', code))}"
-    except Exception:  # noqa: S110, BLE001 — подпись страны декоративная: при любой ошибке берётся «🌐 Node»
-        pass
+                    return f"{flag} {names_ru.get(code, raw_name or code)}"
+        except Exception:  # noqa: S112, BLE001 — перебор резервных GeoIP-источников; при сбое всех берётся «🌐 Node»
+            continue
     return "🌐 Node"
 
 
@@ -634,13 +643,14 @@ def cmd_configure_ai(args):
     insert_idx = 1 if rules and rules[0].get("outboundTag") == "api" else 0
 
     if args.ai_mode == "psiphon":
-        # Современная форма socks-аутбаунда (address/port); массив servers — наследие V2Ray.
+        # Форма servers[] нужна для TCP-теста исходящих в панели 3x-ui 3.11 (она читает только
+        # settings.servers[]), при этом Xray 26+ также корректно работает с servers[].
         # vps-psiphon публикует SOCKS5 на 127.0.0.1 (--bind-loopback). UDP туда не направляется:
         # локальный прокси Psiphon его не поддерживает.
         psiphon_outbound = {
             "tag": "psiphon-out",
             "protocol": "socks",
-            "settings": {"address": "127.0.0.1", "port": int(args.psiphon_port)},
+            "settings": {"servers": [{"address": "127.0.0.1", "port": int(args.psiphon_port)}]},
         }
         outbounds.append(psiphon_outbound)
 
