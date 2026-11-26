@@ -170,5 +170,28 @@ check "CLI unban по ID" grep -q "cscli decisions delete --id 43" "$MOCK_LOG"
 check "CLI unban по IP" grep -q "cscli decisions delete --ip 1.2.3.4" "$MOCK_LOG"
 check "CLI unban по CIDR" grep -q "cscli decisions delete --range 10.0.0.0/24" "$MOCK_LOG"
 
+echo "wait_port_ready (ожидание открытия локального TCP-порта)"
+SS_CALLS="$TMP/ss_calls"
+: > "$SS_CALLS"
+cat <<EOF > "$MOCK_BIN/ss"
+#!/usr/bin/env bash
+echo x >> "$SS_CALLS"
+n=\$(wc -l < "$SS_CALLS")
+if (( n >= 2 )); then
+    echo "LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*"
+fi
+EOF
+chmod +x "$MOCK_BIN/ss"
+check "wait_port_ready дожидается открытия порта 443" \
+    env PATH="$MOCK_BIN:$PATH" bash -c 'source "$1/lib/common.sh"; wait_port_ready 443 3 "Xray"' _ "$REPO"
+: > "$SS_CALLS"
+cat <<'EOF' > "$MOCK_BIN/ss"
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$MOCK_BIN/ss"
+check_not "wait_port_ready падает по таймауту, если порт не открылся" \
+    bash -c 'PATH="'"$MOCK_BIN"':$PATH"; source "$1/lib/common.sh"; wait_port_ready 443 1 "Xray" 2>/dev/null' _ "$REPO"
+
 echo "итого: ${pass} ok, ${fail} FAIL"
 [[ $fail -eq 0 ]]

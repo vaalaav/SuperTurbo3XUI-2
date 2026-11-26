@@ -653,7 +653,15 @@ clean_server() {
     docker rm -f vps-psiphon >/dev/null 2>&1 || true
     systemctl disable --now 3xui-node-geo-update.timer >/dev/null 2>&1 || true
 
-    apt-get purge -y -qq nginx nginx-common nginx-core crowdsec crowdsec-firewall-bouncer-nftables fail2ban >/dev/null 2>&1 || true
+    local purge_pkgs=() pkg
+    for pkg in nginx nginx-common nginx-core crowdsec crowdsec-firewall-bouncer-nftables fail2ban; do
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qE 'installed|config-files'; then
+            purge_pkgs+=("$pkg")
+        fi
+    done
+    if (( ${#purge_pkgs[@]} > 0 )); then
+        apt-get purge -y -qq "${purge_pkgs[@]}" >/dev/null 2>&1 || true
+    fi
     apt-get autoremove -y -qq >/dev/null 2>&1 || true
 
     nft delete table inet antiscan 2>/dev/null || true
