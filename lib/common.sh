@@ -12,11 +12,11 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
-STATE_DIR="/etc/3xui-node"
-STATE_FILE="${STATE_DIR}/state.env"
-PROGRESS_FILE="${STATE_DIR}/last_module"
-BACKUP_ROOT="/root/3xui-node-backups"
-LOG_FILE="/var/log/3xui-node-install.log"
+STATE_DIR="${STATE_DIR:-/etc/3xui-node}"
+STATE_FILE="${STATE_FILE:-${STATE_DIR}/state.env}"
+PROGRESS_FILE="${PROGRESS_FILE:-${STATE_DIR}/last_module}"
+BACKUP_ROOT="${BACKUP_ROOT:-/root/3xui-node-backups}"
+LOG_FILE="${LOG_FILE:-/var/log/3xui-node-install.log}"
 
 # 3x-ui: проект использует REST API версии 3.11 (клиенты, хосты, токены), поэтому ниже неё не работает.
 XUI_DEFAULT_VERSION="v3.11.0"
@@ -193,4 +193,31 @@ wait_xui_ready() {
 restart_xui() {
     systemctl restart x-ui
     wait_xui_ready "${1:-30}"
+}
+
+# Установка и базовая настройка CrowdSec + nftables firewall bouncer.
+install_crowdsec() {
+    log_info "Установка CrowdSec + nftables firewall bouncer..."
+    curl -fsSL https://install.crowdsec.net | sh >/dev/null 2>&1 || return 1
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq crowdsec crowdsec-firewall-bouncer-nftables || return 1
+    cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx --force >/dev/null 2>&1 || true
+
+    mkdir -p /etc/crowdsec/acquis.d
+    cat <<'EOF' > /etc/crowdsec/acquis.d/nginx.yaml
+filenames:
+  - /var/log/nginx/access.log
+  - /var/log/nginx/error.log
+labels:
+  type: nginx
+EOF
+    cscli bouncers delete firewall-bouncer >/dev/null 2>&1 || true
+    local bouncer_key
+    bouncer_key=$(cscli bouncers add firewall-bouncer -o raw) || return 1
+    [[ -n "$bouncer_key" ]] || return 1
+    sed -i "s|^api_key:.*|api_key: ${bouncer_key}|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml || return 1
+    sed -i "s|^mode:.*|mode: nftables|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml || return 1
+    systemctl enable --now crowdsec crowdsec-firewall-bouncer >/dev/null 2>&1 || return 1
+    cscli scenarios remove crowdsecurity/nginx-req-limit-exceeded --force >/dev/null 2>&1 || true
+    systemctl restart crowdsec crowdsec-firewall-bouncer || return 1
+    log_ok "CrowdSec активирован."
 }

@@ -156,29 +156,7 @@ systemctl restart fail2ban
 
 # 4. CrowdSec (опционально)
 if [[ "${ENABLE_CROWDSEC:-false}" == "true" ]]; then
-    log_info "Установка CrowdSec + nftables firewall bouncer..."
-    if curl -fsSL https://install.crowdsec.net | sh >/dev/null 2>&1; then
-        apt-get install -y -qq crowdsec crowdsec-firewall-bouncer-nftables
-        cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx --force >/dev/null 2>&1 || true
-
-        cat <<'EOF' > /etc/crowdsec/acquis.d/nginx.yaml
-filenames:
-  - /var/log/nginx/access.log
-  - /var/log/nginx/error.log
-labels:
-  type: nginx
-EOF
-        cscli bouncers delete firewall-bouncer >/dev/null 2>&1 || true
-        BOUNCER_KEY=$(cscli bouncers add firewall-bouncer -o raw)
-        sed -i "s|^api_key:.*|api_key: ${BOUNCER_KEY}|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
-        sed -i "s|^mode:.*|mode: nftables|" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
-        systemctl enable --now crowdsec crowdsec-firewall-bouncer >/dev/null 2>&1
-cscli scenarios remove crowdsecurity/nginx-req-limit-exceeded --force >/dev/null 2>&1 || true
-        systemctl restart crowdsec crowdsec-firewall-bouncer
-        log_ok "CrowdSec активирован."
-    else
-        log_warn "Не удалось подключить репозиторий CrowdSec, шаг пропущен."
-    fi
+    install_crowdsec || log_warn "Не удалось подключить репозиторий или установить CrowdSec, шаг пропущен."
 fi
 
 # 5. Объединённый nftables-антисканер
