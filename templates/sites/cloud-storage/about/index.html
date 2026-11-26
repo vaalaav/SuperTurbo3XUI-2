@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Infrastructure &amp; Network — __BRAND__</title>
+  <meta name="description" content="Hardware topology, redundancy, and security controls powering __BRAND__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="/">Overview</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/docs/">S3 Docs</a>
+        <a class="active" href="/about/">Infrastructure</a>
+      </nav>
+      <span class="badge">Operational &bull; __REGION__</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Cluster Topology &amp; Reliability</h1>
+    <p class="lead">Designed for sustained throughput and predictable tail latency across Tier-III facilities in <strong>__REGION__</strong>.</p>
+
+    <section class="grid">
+      <div class="card"><div class="k">Active Storage Nodes</div><div class="v">__NODES_COUNT__</div></div>
+      <div class="card"><div class="k">Aggregate Ingress</div><div class="v">__THROUGHPUT__ Gbps</div></div>
+      <div class="card"><div class="k">Median Latency</div><div class="v">__LATENCY_MS__ ms</div></div>
+      <div class="card"><div class="k">Observed Uptime</div><div class="v ok-text">__UPTIME__</div></div>
+    </section>
+
+    <section class="card" style="margin-bottom:1.5rem">
+      <h2>Hardware &amp; Data Integrity</h2>
+      <p class="muted">Every storage node in __REGION_CITY__ runs dual-port 25GbE bonding over enterprise PCIe Gen4 NVMe drives. Data blocks are checksummed with BLAKE3 on write and continuously verified on read and background scrub cycles.</p>
+      <img src="/assets/topology.svg" alt="NVMe cluster erasure coding topology" style="width:100%;height:auto;margin-top:1rem;border-radius:8px;border:1px solid var(--border)">
+    </section>
+
+    <section class="card">
+      <h2>Operations Contact</h2>
+      <p class="muted">For peering requests, abuse reports, or tenant quota increases, reach our engineering team at <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Overview</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/docs/">Documentation</a>
+        <a href="/legal/">Privacy &amp; SLA</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

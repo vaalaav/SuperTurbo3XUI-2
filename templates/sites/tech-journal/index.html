@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__BRAND__ — Systems Engineering &amp; Infrastructure Notes</title>
+  <meta name="description" content="__TAGLINE__">
+  <link rel="canonical" href="https://__DOMAIN__/">
+  <link rel="alternate" type="application/rss+xml" title="__BRAND__ RSS" href="/rss.xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="__BRAND__ — Systems Engineering">
+  <meta property="og:description" content="__TAGLINE__">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Editorial navigation">
+        <a class="active" href="/">Latest</a>
+        <a href="/articles/">Archive</a>
+        <a href="/topics/">Topics</a>
+        <a href="/about/">Editorial</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Engineering Notes &amp; Benchmarks</h1>
+    <p class="lead">__TAGLINE__.</p>
+
+    <article class="card">
+      <div class="meta">__DATE_1__ &bull; <span class="tag-chip">Linux Networking</span> &bull; 8 min read</div>
+      <h2><a href="/articles/ebpf-edge-filtering/">Stateless Edge Filtering with XDP and nftables Sets</a></h2>
+      <p class="muted">How modern Linux kernels handle large dynamic IP prefix sets at line rate without exhausting conntrack tables on edge ingress nodes.</p>
+      <a href="/articles/ebpf-edge-filtering/">Continue reading &rarr;</a>
+    </article>
+
+    <article class="card">
+      <div class="meta">__DATE_2__ &bull; <span class="tag-chip">Storage Systems</span> &bull; 11 min read</div>
+      <h2><a href="/articles/nvme-raid-benchmarks/">NVMe RAID-10 vs Erasure Coding for Distributed Object Nodes</a></h2>
+      <p class="muted">Field benchmarks comparing 99th-percentile write latency and recovery time across __NODES_COUNT__ NVMe servers in __REGION_CITY__.</p>
+      <a href="/articles/nvme-raid-benchmarks/">Continue reading &rarr;</a>
+    </article>
+
+    <section class="card">
+      <h3>Weekly Engineering Digest</h3>
+      <p class="muted">Get notified when new systems benchmarks and postmortems are published on <code>__DOMAIN__</code>.</p>
+      <form id="newsletter-form" class="sub-form">
+        <input id="digest-email" type="email" placeholder="engineer@domain.org" required>
+        <button class="btn" type="submit">Subscribe</button>
+      </form>
+      <div id="newsletter-msg" class="meta" style="margin-top:.65rem"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/articles/">Archive</a>
+        <a href="/topics/">Topics</a>
+        <a href="/about/">About</a>
+        <a href="/rss.xml">RSS Feed</a>
+        <a href="/sitemap.xml">Sitemap</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

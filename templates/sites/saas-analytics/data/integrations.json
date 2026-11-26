@@ -1,0 +1,38 @@
+[
+  {
+    "name": "ClickHouse Cloud / Self-Hosted",
+    "category": "warehouse",
+    "latency": "Batch & Stream (5s)",
+    "description": "High-throughput columnar sink with automatic schema evolution and deduplication."
+  },
+  {
+    "name": "Apache Kafka / Redpanda",
+    "category": "streaming",
+    "latency": "Sub-second (<50ms)",
+    "description": "Consume JSON or Protobuf topics directly into normalized product event tables."
+  },
+  {
+    "name": "PostgreSQL Logical Replication",
+    "category": "warehouse",
+    "latency": "CDC (~2s)",
+    "description": "Capture row-level INSERT, UPDATE, and DELETE streams without polling production."
+  },
+  {
+    "name": "OpenTelemetry OTLP Collector",
+    "category": "telemetry",
+    "latency": "Real-time",
+    "description": "Correlate frontend user sessions with backend traces and error budgets."
+  },
+  {
+    "name": "S3 / Parquet Export",
+    "category": "storage",
+    "latency": "Hourly partitions",
+    "description": "Write compressed Zstd Parquet partitions into EU object storage buckets."
+  },
+  {
+    "name": "Slack & PagerDuty Webhooks",
+    "category": "alerts",
+    "latency": "Instant",
+    "description": "Trigger anomaly alerts when funnel conversion or ingestion lag crosses thresholds."
+  }
+]

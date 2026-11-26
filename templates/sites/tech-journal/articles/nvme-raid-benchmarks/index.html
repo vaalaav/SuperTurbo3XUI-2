@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NVMe RAID-10 vs Erasure Coding — __BRAND__</title>
+  <meta name="description" content="Benchmarking Reed-Solomon EC 4+2 against mirrored NVMe pools in distributed storage clusters.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Editorial navigation">
+        <a href="/">Latest</a>
+        <a class="active" href="/articles/">Archive</a>
+        <a href="/topics/">Topics</a>
+        <a href="/about/">Editorial</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article class="article-body">
+      <div class="meta">Published __DATE_2__ &bull; Storage Systems &bull; Test cluster: __NODES_COUNT__ nodes</div>
+      <h1>NVMe RAID-10 vs Erasure Coding for Distributed Object Nodes</h1>
+      <p>Choosing between 3x replication and Reed-Solomon erasure coding directly dictates hardware cost and P99 write latency. On modern PCIe Gen4 NVMe drives, network serialization and fsync batching dominate over parity math.</p>
+      <h2>Benchmark Summary (__THROUGHPUT__ Gbps Fabric)</h2>
+      <p>Across __NODES_COUNT__ nodes in __REGION__ (__REGION_CITY__), EC 4+2 reduced raw storage overhead from 200% to 50% while adding only 1.8 ms to median 4 MB PUT operations.</p>
+      <pre># fio sequential write profile (64k blocks, iodepth=32)
+WRITE: bw=4120MiB/s (4320MB/s), lat avg=1840usec</pre>
+      <p><a href="/articles/">&larr; Back to Archive</a></p>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Latest</a>
+        <a href="/topics/">Topics</a>
+        <a href="/rss.xml">RSS Feed</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

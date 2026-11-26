@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pricing &amp; Storage Tiers — __BRAND__</title>
+  <meta name="description" content="Transparent per-GB pricing for NVMe hot storage and cold archive buckets on __DOMAIN__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="/">Overview</a>
+        <a class="active" href="/pricing/">Pricing</a>
+        <a href="/docs/">S3 Docs</a>
+        <a href="/about/">Infrastructure</a>
+      </nav>
+      <span class="badge">Operational &bull; __REGION__</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Transparent Storage Tiers</h1>
+    <p class="lead">Predictable monthly billing with zero API request surcharges for standard GET/PUT operations in __REGION__.</p>
+
+    <section class="grid-3">
+      <article class="card">
+        <div class="k">Standard NVMe</div>
+        <div class="v">$6.50 <span class="muted" style="font-size:.9rem;font-weight:400">/ TB / mo</span></div>
+        <p class="muted">Low-latency hot tier for application assets, container layers, and real-time analytics datasets.</p>
+        <ul class="muted" style="padding-left:1.2rem">
+          <li>Median TTFB: __LATENCY_MS__ ms</li>
+          <li>Erasure coding EC 4+2</li>
+          <li>3 TB egress included per TB stored</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="k">Backup Vault</div>
+        <div class="v">$3.90 <span class="muted" style="font-size:.9rem;font-weight:400">/ TB / mo</span></div>
+        <p class="muted">Cost-optimized tier for PostgreSQL WAL archives, VM snapshots, and immutable WORM retention.</p>
+        <ul class="muted" style="padding-left:1.2rem">
+          <li>Object Lock Compliance mode</li>
+          <li>Lifecycle auto-expiration</li>
+          <li>No minimum object duration fee</li>
+        </ul>
+      </article>
+      <article class="card">
+        <div class="k">Dedicated Cluster</div>
+        <div class="v">Custom</div>
+        <p class="muted">Isolated storage pool with custom peering, dedicated KMS keys, and guaranteed __THROUGHPUT__ Gbps throughput.</p>
+        <ul class="muted" style="padding-left:1.2rem">
+          <li>__UPTIME__ contractual SLA</li>
+          <li>Private VLAN / BGP peering</li>
+          <li>Direct contact: __CONTACT_EMAIL__</li>
+        </ul>
+      </article>
+    </section>
+
+    <section style="margin-top:2rem">
+      <h2>Feature Comparison</h2>
+      <table>
+        <thead>
+          <tr><th>Capability</th><th>Standard NVMe</th><th>Backup Vault</th><th>Dedicated</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>S3 API &amp; Multipart Uploads</td><td>Included</td><td>Included</td><td>Included</td></tr>
+          <tr><td>TLS 1.3 + SSE-S3 Encryption</td><td>Included</td><td>Included</td><td>Customer KMS</td></tr>
+          <tr><td>Object Lock (WORM)</td><td>Optional</td><td>Enabled</td><td>Enabled</td></tr>
+          <tr><td>Bandwidth Overages</td><td>$0.008 / GB</td><td>$0.008 / GB</td><td>Flat / Custom</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Overview</a>
+        <a href="/docs/">Documentation</a>
+        <a href="/about/">Infrastructure</a>
+        <a href="/legal/">Privacy &amp; SLA</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Subscribe to Updates — __BRAND__</title>
+  <meta name="description" content="Subscribe to email or webhook notifications for __DOMAIN__ status events.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Status navigation">
+        <a href="/">Status</a>
+        <a href="/incidents/">Incidents</a>
+        <a href="/metrics/">Metrics</a>
+        <a class="active" href="/subscribe/">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Status Notifications</h1>
+    <p class="muted">Receive alerts when maintenance windows are scheduled or an incident is opened on <code>__DOMAIN__</code>.</p>
+
+    <section class="card" style="max-width:600px">
+      <h2 style="margin-top:0">Email Alerts</h2>
+      <form id="status-subscribe-form" class="sub-form">
+        <input id="sub-email" type="email" placeholder="ops@your-company.com" required>
+        <button class="btn" type="submit">Subscribe</button>
+      </form>
+      <div id="subscribe-msg" class="muted" style="margin-top:.75rem;font-size:.9rem"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Status</a>
+        <a href="/incidents/">Incidents</a>
+        <a href="/metrics/">Metrics</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

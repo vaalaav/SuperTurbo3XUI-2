@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__BRAND__ — Service Status &amp; Uptime</title>
+  <meta name="description" content="__TAGLINE__">
+  <link rel="canonical" href="https://__DOMAIN__/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="__BRAND__ — Service Status">
+  <meta property="og:description" content="__TAGLINE__">
+  <meta property="og:url" content="https://__DOMAIN__/">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Status navigation">
+        <a class="active" href="/">Status</a>
+        <a href="/incidents/">Incidents</a>
+        <a href="/metrics/">Metrics</a>
+        <a href="/subscribe/">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="banner">
+      <span>All Systems Operational &mdash; __REGION__</span>
+      <span class="muted" style="font-weight:500;font-size:.9rem">Updated __ISO_DATE__</span>
+    </div>
+
+    <section class="grid">
+      <div class="card"><div class="k">90-Day Uptime</div><div class="v ok">__UPTIME__</div></div>
+      <div class="card"><div class="k">Median Probe RTT</div><div class="v">__LATENCY_MS__ ms</div></div>
+      <div class="card"><div class="k">Monitored Nodes</div><div class="v">__NODES_COUNT__</div></div>
+      <div class="card"><div class="k">Platform Version</div><div class="v">v__VERSION__</div></div>
+    </section>
+
+    <section class="panel" aria-label="Component statuses">
+      <div class="row">
+        <div>
+          <strong>Edge Ingress (__DOMAIN__)</strong>
+          <div class="muted" style="font-size:.86rem">TLS 1.3 termination &amp; HTTP/2 routing</div>
+          <div class="bars" data-uptime-bars></div>
+        </div>
+        <span class="ok">Operational</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Telemetry &amp; Metrics Collector</strong>
+          <div class="muted" style="font-size:.86rem">Synthetic probes and time-series pipeline</div>
+          <div class="bars" data-uptime-bars></div>
+        </div>
+        <span class="ok">Operational</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Internal API Gateway (v__VERSION__)</strong>
+          <div class="muted" style="font-size:.86rem">JSON status &amp; webhook dispatch</div>
+          <div class="bars" data-uptime-bars></div>
+        </div>
+        <span class="ok">Operational</span>
+      </div>
+      <div class="row">
+        <div>
+          <strong>Artifact Registry Sync</strong>
+          <div class="muted" style="font-size:.86rem">Regional mirror replication in __REGION__</div>
+          <div class="bars" data-uptime-bars></div>
+        </div>
+        <span class="ok">Operational</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">Latest Notice</h2>
+      <p class="muted" style="margin-bottom:.5rem"><strong>__DATE_1__</strong> &mdash; No active incidents. Routine capacity check completed across __REGION__.</p>
+      <a href="/incidents/">View full incident log &rarr;</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/incidents/">Incidents</a>
+        <a href="/metrics/">Metrics</a>
+        <a href="/subscribe/">Subscribe</a>
+        <a href="/api/v1/status">JSON API</a>
+        <a href="/sitemap.xml">Sitemap</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

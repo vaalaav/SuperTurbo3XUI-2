@@ -81,6 +81,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 ├── install.sh                 # Оркестратор (--only, --from, --resume, --config, --xui-version)
 ├── lib/
 │   ├── common.sh              # Логи, state.env, бэкапы, SSH, версия 3x-ui, API-токен
+│   ├── mask_site.py           # Генератор и деплойер многостраничных порталов маскировки
 │   ├── xui_api.py             # Работа с 3x-ui >= 3.11.0 через REST API
 │   ├── xray_client.py         # Проверка профиля по ссылке vless:// временным клиентом Xray
 │   └── xui_v311_post.py       # Настройки подписки (JSON, Happ/INCY)
@@ -88,12 +89,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vaalaav/SuperTurbo3XUI-2/mai
 │   ├── 01_preflight.sh        # ОС, DoH-проверка DNS, мастер параметров
 │   ├── 02_system_tuning.sh    # nginx.org, BBR+fq, swap, DoT / опц. DoH (dnscrypt-proxy)
 │   ├── 03_security_stack.sh   # SSH (откат 180с), UFW, Fail2Ban, CrowdSec, nftables
-│   ├── 04_ssl_and_mask.sh     # Certbot ECDSA (webroot) + заглушка
+│   ├── 04_ssl_and_mask.sh     # Certbot ECDSA (webroot) + многостраничный портал маскировки
 │   ├── 05_install_3xui.sh     # Установка/обновление 3x-ui, Reality + XHTTP + 1 клиент + Happ
 │   ├── 06_ai_routing.sh       # Опциональный Psiphon для Gemini (vps-psiphon, закреплённая версия)
 │   ├── 07_nginx_config.sh     # Nginx 127.0.0.1:8443 proxy_protocol + HTTP/2 XHTTP
 │   └── 08_cli_and_audit.sh    # my3xui, MOTD, ссылки клиента из панели и сквозная проверка VPN
-├── templates/sites/           # Автономные шаблоны заглушек (cloud-storage, status-hub, dev-docs)
+├── templates/sites/           # Автономные порталы (cloud-storage, status-hub, dev-docs, saas-analytics, tech-journal)
 ├── cli/my3xui                 # Утилита администрирования
 └── cli/3xui-node-geo-update   # Обновление geo-файлов и зеркала (таймер systemd)
 ```
@@ -114,6 +115,8 @@ my3xui security             # Статус UFW, Fail2Ban, CrowdSec и счётч
 my3xui ssh status           # Порт SSH, ключи Termius, статус парольной авторизации
 my3xui ssh add-key          # Добавить публичный ключ 2-го устройства Termius
 my3xui ssh lock-password    # Отключить вход по паролю после проверки обоих устройств
+my3xui mask status          # Текущий портал маскировки, бренд и файлы
+my3xui mask set <шаблон>    # Переключить портал (cloud-storage|status-hub|dev-docs|saas-analytics|tech-journal|random|reverse-proxy)
 my3xui run 07_nginx_config  # Перезапустить отдельный модуль
 my3xui self-update          # Обновить модули из GitHub
 my3xui clean                # Полная очистка сервера (с сохранением SSH)

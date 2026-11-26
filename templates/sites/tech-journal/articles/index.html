@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Article Archive — __BRAND__</title>
+  <meta name="description" content="Searchable archive of engineering articles published on __DOMAIN__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Editorial navigation">
+        <a href="/">Latest</a>
+        <a class="active" href="/articles/">Archive</a>
+        <a href="/topics/">Topics</a>
+        <a href="/about/">Editorial</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Article Archive</h1>
+    <p class="lead">Filter published engineering essays and production benchmarks.</p>
+    <div style="margin-bottom:1.5rem">
+      <input id="topic-search" type="search" placeholder="Search by title or topic (e.g. NVMe, nftables)..." style="width:100%;padding:.65rem .9rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--fg)">
+    </div>
+    <div id="posts-archive">Loading archive...</div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Latest</a>
+        <a href="/topics/">Topics</a>
+        <a href="/rss.xml">RSS Feed</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

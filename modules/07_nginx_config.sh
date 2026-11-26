@@ -6,6 +6,7 @@ require_root
 load_state
 
 NGINX_BACKUP=$(backup_path /etc/nginx "nginx")
+mkdir -p /etc/nginx/conf.d/node-ext /etc/nginx/conf.d/masksite-api
 
 if [[ "${MASK_TEMPLATE}" == "reverse-proxy" && -n "${REVERSE_PROXY_URL:-}" ]]; then
     RP_HOST=$(echo "$REVERSE_PROXY_URL" | sed -E 's|^https?://||; s|/.*$||')
@@ -14,6 +15,7 @@ if [[ "${MASK_TEMPLATE}" == "reverse-proxy" && -n "${REVERSE_PROXY_URL:-}" ]]; t
         location / {
             limit_req zone=bot burst=20 nodelay;
             limit_conn addr 20;
+            proxy_intercept_errors off;
             proxy_pass ${RP_SCHEME}://${RP_HOST};
             proxy_ssl_server_name on;
             proxy_ssl_name ${RP_HOST};
@@ -35,25 +37,30 @@ EOF
 )
 else
     MASK_BLOCK=$(cat <<EOF
-        location = /api/status {
-            default_type application/json;
-            return 200 '{"service":"${BRAND_NAME:-CoreNode}","status":"operational","version":"${APP_VER:-2.4.1}","region":"${NODE_REGION:-eu-central-1}"}';
+        location = /robots.txt {
+            access_log off;
+            root /var/www/masksite;
+            try_files /robots.txt @robots_default;
         }
-        location = /api/health {
-            default_type application/json;
-            return 200 '{"ok":true,"uptime":"99.98%"}';
+        location @robots_default {
+            default_type text/plain;
+            return 200 "User-agent: *\nAllow: /\n";
         }
-        location = /api/auth {
-            limit_req zone=auth_limit burst=2 nodelay;
-            default_type application/json;
-            return 401 '{"error":"unauthorized","message":"Valid session token required"}';
+        include /etc/nginx/conf.d/masksite-api/*.conf;
+        location ~* \.(?:css|js|svg|png|ico|webp|woff2|json|xml|webmanifest)\$ {
+            limit_req zone=bot burst=40 nodelay;
+            limit_conn addr 20;
+            root /var/www/masksite;
+            expires 24h;
+            try_files \$uri =404;
         }
         location / {
             limit_req zone=bot burst=20 nodelay;
             limit_conn addr 20;
             root /var/www/masksite;
             index index.html;
-            try_files \$uri \$uri/ /index.html;
+            expires 5m;
+            try_files \$uri \$uri/ \$uri.html =404;
         }
 EOF
 )
@@ -67,6 +74,7 @@ if [[ "${ENABLE_GEO_MIRROR:-false}" == "true" ]]; then
             autoindex off;
             access_log off;
             add_header Cache-Control "public, max-age=3600";
+            add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }
 EOF
 )
@@ -94,7 +102,6 @@ http {
     tcp_nopush on;
     tcp_nodelay on;
     server_tokens off;
-    etag off;
     charset utf-8;
     resolver 1.1.1.1 9.9.9.9 ipv6=off valid=300s;
     http2_recv_buffer_size 4m;
@@ -131,9 +138,7 @@ http {
 
     map \$http_user_agent \$badbot_raw {
         default 0;
-        "" 1;
-        ~*(?:httpclient|go-http-client|python-requests|nuclei|httpx|ffuf|gobuster|sqlmap|nikto|masscan|zgrab|censys|shodan|nmap) 1;
-        ~*(?:ahrefs|semrush|mj12bot|yandexbot|googlebot|bingbot|gptbot|claudebot|ccbot|bytespider) 1;
+        ~*(?:nuclei|ffuf|gobuster|sqlmap|nikto|masscan|zgrab|dirbuster|wfuzz|acunetix|nessus|openvas) 1;
     }
 
     map \$request_uri \$is_scan_attempt {
@@ -203,7 +208,6 @@ http {
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
 
         if (\$is_scan_attempt) { return 404; }
         if (\$badbot) { return 404; }
@@ -214,7 +218,7 @@ http {
         error_page 400 403 404 405 @notfound;
 
         location = /${PANEL_PATH} { return 301 /${PANEL_PATH}/; }
-        location /${PANEL_PATH}/ {
+        location ^~ /${PANEL_PATH}/ {
             proxy_pass http://127.0.0.1:${PANEL_PORT}/${PANEL_PATH}/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
@@ -228,6 +232,7 @@ http {
             proxy_intercept_errors off;
             access_log off;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }
 
         location = /${SUB_PATH}  { return 404; }
@@ -241,6 +246,7 @@ http {
             proxy_set_header X-Forwarded-Proto \$scheme;
             proxy_intercept_errors off;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }
 
         location = /${SUB_JSON_PATH:-__disabled__}/ { return 404; }
@@ -251,9 +257,10 @@ http {
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$remote_addr;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         }
 
-        location /${XHTTP_PATH}/ {
+        location ^~ /${XHTTP_PATH}/ {
             proxy_pass http://xray_xhttp;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -281,16 +288,16 @@ ${GEO_BLOCK}
 
         include /etc/nginx/conf.d/node-ext/*.conf;
 
+        location ~ /\. { deny all; }
+
 ${MASK_BLOCK}
 
-        location = /robots.txt {
-            default_type text/plain;
-            access_log off;
-            return 200 "User-agent: *\nDisallow: /\n";
-        }
-        location ~ /\. { deny all; }
         location @notfound {
             limit_req zone=scan burst=3 nodelay;
+            root /var/www/masksite;
+            try_files /404.html @notfound_default;
+        }
+        location @notfound_default {
             root /var/www/html;
             rewrite ^ /404.html break;
         }

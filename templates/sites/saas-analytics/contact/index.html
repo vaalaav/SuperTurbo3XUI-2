@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Request Architecture Demo — __BRAND__</title>
+  <meta name="description" content="Contact the __BRAND__ engineering team in __REGION_CITY__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="/">Platform</a>
+        <a href="/features/">Capabilities</a>
+        <a href="/integrations/">Integrations</a>
+        <a href="/pricing/">Pricing</a>
+        <a class="active" href="/contact/">Request Demo</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Talk to Solutions Engineering</h1>
+    <p class="lead">Provision a sandbox workspace in <strong>__REGION__</strong> (__REGION_CITY__) or email <a href="mailto:__CONTACT_EMAIL__">__CONTACT_EMAIL__</a>.</p>
+
+    <section class="card" style="max-width:620px">
+      <form id="demo-request-form" class="form-grid">
+        <input id="work-email" type="email" placeholder="Work email (e.g. data@company.io)" required>
+        <input id="company-name" type="text" placeholder="Company or team name" required>
+        <select id="event-volume">
+          <option value="25m">Up to 25M events / month</option>
+          <option value="150m">25M – 150M events / month</option>
+          <option value="500m+">150M+ events / month (Dedicated EU)</option>
+        </select>
+        <button class="btn" type="submit">Request Workspace</button>
+      </form>
+      <div id="demo-status" class="muted" style="margin-top:.85rem;font-size:.9rem"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Platform</a>
+        <a href="/features/">Capabilities</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/legal/">GDPR &amp; Privacy</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

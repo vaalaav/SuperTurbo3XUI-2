@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>__BRAND_RAW__</title>
+    <link>https://__DOMAIN__/</link>
+    <description>__TAGLINE__</description>
+    <language>en-us</language>
+    <lastBuildDate>__RSS_DATE_1__</lastBuildDate>
+    <item>
+      <title>Stateless Edge Filtering with XDP and nftables Sets</title>
+      <link>https://__DOMAIN__/articles/ebpf-edge-filtering/</link>
+      <guid>https://__DOMAIN__/articles/ebpf-edge-filtering/</guid>
+      <pubDate>__RSS_DATE_1__</pubDate>
+      <description>Measuring packet drop overhead across 25GbE NICs when combining kernel nftables hash sets with early ingress rate limiting.</description>
+    </item>
+    <item>
+      <title>NVMe RAID-10 vs Erasure Coding for Distributed Object Nodes</title>
+      <link>https://__DOMAIN__/articles/nvme-raid-benchmarks/</link>
+      <guid>https://__DOMAIN__/articles/nvme-raid-benchmarks/</guid>
+      <pubDate>__RSS_DATE_2__</pubDate>
+      <description>Evaluating tail latency, rebuild bandwidth, and CPU cost of Reed-Solomon EC 4+2 versus mirrored NVMe pools.</description>
+    </item>
+  </channel>
+</rss>

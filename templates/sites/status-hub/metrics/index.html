@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>System Metrics — __BRAND__</title>
+  <meta name="description" content="Regional probe latency, throughput, and SLA metrics for __DOMAIN__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Status navigation">
+        <a href="/">Status</a>
+        <a href="/incidents/">Incidents</a>
+        <a class="active" href="/metrics/">Metrics</a>
+        <a href="/subscribe/">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Performance &amp; Telemetry Metrics</h1>
+    <p class="muted">Aggregated measurements collected from synthetic probes in <strong>__REGION__</strong>.</p>
+
+    <section class="grid">
+      <div class="card"><div class="k">TLS Handshake P50</div><div class="v">__LATENCY_MS__ ms</div></div>
+      <div class="card"><div class="k">Backbone Capacity</div><div class="v">__THROUGHPUT__ Gbps</div></div>
+      <div class="card"><div class="k">SLA Compliance</div><div class="v ok">__UPTIME__</div></div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">Machine-Readable Endpoints</h2>
+      <p class="muted">Integrate __BRAND__ status checks into Prometheus, Grafana, or Uptime Kuma:</p>
+      <ul>
+        <li><a href="/api/v1/status"><code>/api/v1/status</code></a> &mdash; Overall status indicator and uptime</li>
+        <li><a href="/api/v1/health"><code>/api/v1/health</code></a> &mdash; Lightweight health probe</li>
+        <li><a href="/data/incidents.json"><code>/data/incidents.json</code></a> &mdash; Structured incident feed</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Status</a>
+        <a href="/incidents/">Incidents</a>
+        <a href="/subscribe/">Subscribe</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

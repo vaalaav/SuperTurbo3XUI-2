@@ -144,26 +144,28 @@ esac
 
 # 7. Шаблон сайта-заглушки
 echo -e "\n6. Маскировка домена ${DOMAIN}:"
-echo "   [1] Случайный автономный шаблон (рекомендуется)"
-echo "   [2] cloud-storage (S3/NVMe облачный портал)"
-echo "   [3] status-hub (панель статуса сервисов)"
-echo "   [4] dev-docs (портал API-документации)"
-echo "   [5] myfakesite (iqubik/myfakesite + Mock API)"
-echo "   [6] Reverse Proxy на свой URL"
+echo "   [1] Случайный многостраничный портал (рекомендуется)"
+echo "   [2] cloud-storage (портал S3/NVMe облачного хранилища)"
+echo "   [3] status-hub (портал статуса сервисов и метрик)"
+echo "   [4] dev-docs (портал API-документации и OpenAPI)"
+echo "   [5] saas-analytics (B2B-платформа телеметрии и аналитики)"
+echo "   [6] tech-journal (инженерный техно-портал и статьи)"
+echo "   [7] Reverse Proxy на свой URL"
 read -erp "   Выбор [1]: " MASK_CHOICE
 REVERSE_PROXY_URL=""
 case "${MASK_CHOICE:-1}" in
     2) MASK_TEMPLATE="cloud-storage" ;;
     3) MASK_TEMPLATE="status-hub" ;;
     4) MASK_TEMPLATE="dev-docs" ;;
-    5) MASK_TEMPLATE="myfakesite" ;;
-    6)
+    5) MASK_TEMPLATE="saas-analytics" ;;
+    6) MASK_TEMPLATE="tech-journal" ;;
+    7)
         MASK_TEMPLATE="reverse-proxy"
         read -erp "   URL для Reverse Proxy (https://...): " REVERSE_PROXY_URL
         REVERSE_PROXY_URL=$(echo "$REVERSE_PROXY_URL" | tr -d '[:space:]')
         ;;
     *)
-        POOL=("cloud-storage" "status-hub" "dev-docs")
+        POOL=("cloud-storage" "status-hub" "dev-docs" "saas-analytics" "tech-journal")
         MASK_TEMPLATE="${POOL[$((RANDOM % ${#POOL[@]}))]}"
         log_info "Выбран случайный шаблон: ${MASK_TEMPLATE}"
         ;;

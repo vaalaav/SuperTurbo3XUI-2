@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>REST Endpoints — __BRAND__</title>
+  <meta name="description" content="Reference for /api/v1/status, /api/v1/health, and /api/v1/auth/token on __DOMAIN__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__ Docs</span></a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="/">Overview</a>
+        <a class="active" href="/endpoints/">Endpoints</a>
+        <a href="/authentication/">Auth</a>
+        <a href="/changelog/">Changelog</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <aside class="sidebar">
+      <h3>Documentation</h3>
+      <ul>
+        <li><a href="/">Introduction</a></li>
+        <li><a class="active" href="/endpoints/">REST Endpoints</a></li>
+        <li><a href="/authentication/">Authentication &amp; JWT</a></li>
+        <li><a href="/changelog/">Release Changelog</a></li>
+      </ul>
+      <h3>Specifications</h3>
+      <ul>
+        <li><a href="/data/openapi.json">OpenAPI 3.1 JSON</a></li>
+      </ul>
+    </aside>
+
+    <main>
+      <h1>REST API Endpoints</h1>
+      <p class="muted">Machine-readable schemas are published in <a href="/data/openapi.json">/data/openapi.json</a>.</p>
+
+      <section class="card">
+        <h2><span class="tag">GET</span> /api/v1/status</h2>
+        <p class="muted">Returns gateway version, active region, and current operational status.</p>
+        <pre>HTTP/2 200 OK
+{"service":"__BRAND__","domain":"__DOMAIN__","api_version":"v__VERSION__","region":"__REGION__","status":"operational"}</pre>
+      </section>
+
+      <section class="card">
+        <h2><span class="tag">GET</span> /api/v1/health</h2>
+        <p class="muted">Lightweight liveness probe for load balancers and synthetic monitors.</p>
+        <pre>HTTP/2 200 OK
+{"ok":true,"uptime":"__UPTIME__"}</pre>
+      </section>
+
+      <section class="card">
+        <h2><span class="tag tag-post">POST</span> /api/v1/auth/token</h2>
+        <p class="muted">Exchanges OAuth2 client credentials for a short-lived signed JWT bearer token.</p>
+        <pre>HTTP/2 401 Unauthorized
+{"error":"unauthorized","message":"Valid client_id and client_secret required"}</pre>
+      </section>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Overview</a>
+        <a href="/authentication/">Authentication</a>
+        <a href="/changelog/">Changelog</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "__BRAND__ Object Storage",
+  "short_name": "__BRAND__",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "__THEME_BG__",
+  "theme_color": "__THEME_ACCENT__",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

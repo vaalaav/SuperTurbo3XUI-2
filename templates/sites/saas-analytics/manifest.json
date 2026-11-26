@@ -1,0 +1,108 @@
+{
+  "id": "saas-analytics",
+  "title": "B2B Analytics & ETL Platform",
+  "description": "Корпоративный SaaS-портал продуктовой аналитики и потоковых ETL-пайплайнов: возможности, интеграции, тарифы, контакты",
+  "brand_nouns": ["Metrics", "Analytics", "Telemetry", "Signals", "Insights"],
+  "taglines": [
+    "Real-time product telemetry and streaming ETL pipelines for engineering teams",
+    "Unified event ingestion, funnel analytics, and warehouse sync with EU data residency",
+    "Sub-second analytical queries over high-volume application event streams"
+  ],
+  "email_locals": ["hello", "solutions", "support", "privacy"],
+  "pages": [
+    "/",
+    "/features/",
+    "/integrations/",
+    "/pricing/",
+    "/contact/",
+    "/legal/"
+  ],
+  "robots_disallow": [
+    "/api/",
+    "/app/"
+  ],
+  "themes": [
+    {
+      "name": "emerald-ink",
+      "bg": "#090f15",
+      "surface": "#111a24",
+      "surface_alt": "#182433",
+      "border": "#223244",
+      "fg": "#eef4f8",
+      "muted": "#93a5b8",
+      "accent": "#10b981",
+      "accent_fg": "#03261b",
+      "ok": "#34d399"
+    },
+    {
+      "name": "royal-clean",
+      "bg": "#f8fafc",
+      "surface": "#ffffff",
+      "surface_alt": "#eef2ff",
+      "border": "#e2e8f0",
+      "fg": "#0f172a",
+      "muted": "#475569",
+      "accent": "#4f46e5",
+      "accent_fg": "#ffffff",
+      "ok": "#16a34a"
+    },
+    {
+      "name": "nordic-amber",
+      "bg": "#111418",
+      "surface": "#181d23",
+      "surface_alt": "#222931",
+      "border": "#2d3640",
+      "fg": "#f3f4f6",
+      "muted": "#9ca3af",
+      "accent": "#f97316",
+      "accent_fg": "#280f02",
+      "ok": "#22c55e"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "path": "/api/v1/status",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "service": "__BRAND_RAW__",
+        "domain": "__DOMAIN__",
+        "version": "__VERSION__",
+        "region": "__REGION__",
+        "city": "__REGION_CITY__",
+        "status": "operational"
+      }
+    },
+    {
+      "path": "/api/v1/health",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "ok": true,
+        "ingestion_latency_ms": "__LATENCY_MS__",
+        "uptime": "__UPTIME__"
+      }
+    },
+    {
+      "path": "/api/v1/pipelines/summary",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "region": "__REGION__",
+        "active_workers": "__NODES_COUNT__",
+        "throughput_gbps": "__THROUGHPUT__",
+        "last_updated": "__ISO_DATE__"
+      }
+    },
+    {
+      "path": "/api/v1/demo-request",
+      "status": 202,
+      "content_type": "application/json",
+      "rate_limit": "zone=auth_limit burst=2 nodelay",
+      "body": {
+        "accepted": true,
+        "message": "Your workspace request has been queued for our __REGION_CITY__ solutions team."
+      }
+    }
+  ]
+}
