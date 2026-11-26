@@ -312,9 +312,11 @@ def render_nginx_api_conf(manifest: dict, replacements: dict[str, str]) -> str:
         status = int(ep.get("status", 200))
         content_type = ep.get("content_type", "application/json")
         body = _apply_replacements(json.dumps(ep["body"], ensure_ascii=False, separators=(",", ":")), replacements)
-        rate_limit = ep.get("rate_limit", "")
+        rate_limit = ep.get("rate_limit", "").strip()
+        if rate_limit and not rate_limit.startswith("zone="):
+            rate_limit = f"zone={rate_limit}"
         escaped_body = body.replace("'", "\\'")
-        limit_line = f"    limit_req zone={rate_limit};\n" if rate_limit else ""
+        limit_line = f"    limit_req {rate_limit};\n" if rate_limit else ""
         blocks.append(
             f"location = {path} {{\n"
             f"{limit_line}"

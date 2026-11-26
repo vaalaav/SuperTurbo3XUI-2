@@ -28,12 +28,12 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 
 
 nginx -v
 fail=0
-for mask in cloud-storage reverse-proxy; do
+for mask in cloud-storage status-hub dev-docs saas-analytics tech-journal reverse-proxy; do
     for geo in true false; do
         rm -f "$OUT" /etc/nginx/conf.d/masksite-api/site.conf
-        if [[ "$mask" == "cloud-storage" ]]; then
+        if [[ "$mask" != "reverse-proxy" ]]; then
             python3 "${REPO}/lib/mask_site.py" deploy --templates-dir="${REPO}/templates/sites" \
-                --template=cloud-storage --domain="${DOMAIN}" --output-dir=/var/www/masksite \
+                --template="$mask" --domain="${DOMAIN}" --output-dir=/var/www/masksite \
                 --nginx-api-conf=/etc/nginx/conf.d/masksite-api/site.conf >/dev/null
         fi
         MASK_TEMPLATE="$mask" REVERSE_PROXY_URL="https://example.org" ENABLE_GEO_MIRROR="$geo" \

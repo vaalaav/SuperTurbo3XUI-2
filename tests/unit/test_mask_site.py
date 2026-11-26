@@ -64,6 +64,13 @@ class MaskSiteTests(unittest.TestCase):
 
                 api_paths = {ep["path"] for ep in manifest["api_endpoints"]}
                 conf_text = api_conf.read_text(encoding="utf-8")
+                self.assertNotIn("zone=zone=", conf_text)
+                for line in conf_text.splitlines():
+                    if "limit_req" in line:
+                        self.assertRegex(
+                            line,
+                            r"^\s*limit_req zone=[a-z0-9_]+(?:\s+burst=\d+)?(?:\s+nodelay)?;$",
+                        )
                 for path in api_paths:
                     self.assertIn(f"location = {path}", conf_text)
 
