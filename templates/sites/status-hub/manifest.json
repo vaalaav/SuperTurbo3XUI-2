@@ -1,0 +1,95 @@
+{
+  "id": "status-hub",
+  "title": "Service Status & Telemetry Hub",
+  "description": "Светлый портал мониторинга сервисов: статус узлов, журнал инцидентов, метрики и подписка на уведомления",
+  "brand_nouns": ["Status", "Pulse", "Telemetry", "Beacon", "Watch"],
+  "taglines": [
+    "Real-time infrastructure health, SLA tracking, and incident transparency",
+    "Automated edge telemetry and service availability monitoring across Europe",
+    "Continuous synthetic probing and incident reporting for production services"
+  ],
+  "email_locals": ["noc", "status", "alerts", "ops"],
+  "pages": [
+    "/",
+    "/incidents/",
+    "/metrics/",
+    "/subscribe/"
+  ],
+  "robots_disallow": [
+    "/api/",
+    "/admin/"
+  ],
+  "themes": [
+    {
+      "name": "daylight-emerald",
+      "bg": "#f8fafc",
+      "surface": "#ffffff",
+      "surface_alt": "#f1f5f9",
+      "border": "#e2e8f0",
+      "fg": "#0f172a",
+      "muted": "#64748b",
+      "accent": "#059669",
+      "accent_fg": "#ffffff",
+      "ok": "#059669"
+    },
+    {
+      "name": "ivory-cobalt",
+      "bg": "#f9fafb",
+      "surface": "#ffffff",
+      "surface_alt": "#eff6ff",
+      "border": "#dbeafe",
+      "fg": "#111827",
+      "muted": "#4b5563",
+      "accent": "#2563eb",
+      "accent_fg": "#ffffff",
+      "ok": "#16a34a"
+    },
+    {
+      "name": "stone-teal",
+      "bg": "#fafaf9",
+      "surface": "#ffffff",
+      "surface_alt": "#f0fdfa",
+      "border": "#e7e5e4",
+      "fg": "#1c1917",
+      "muted": "#57534e",
+      "accent": "#0d9488",
+      "accent_fg": "#ffffff",
+      "ok": "#0d9488"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "path": "/api/v1/status",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "service": "__BRAND_RAW__",
+        "domain": "__DOMAIN__",
+        "indicator": "none",
+        "description": "All Systems Operational",
+        "region": "__REGION__",
+        "uptime_90d": "__UPTIME__"
+      }
+    },
+    {
+      "path": "/api/v1/health",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "ok": true,
+        "probe_latency_ms": "__LATENCY_MS__",
+        "version": "__VERSION__"
+      }
+    },
+    {
+      "path": "/api/v1/subscribe",
+      "status": 202,
+      "content_type": "application/json",
+      "rate_limit": "zone=auth_limit burst=2 nodelay",
+      "body": {
+        "accepted": true,
+        "message": "Confirmation link queued if subscription channel is enabled for this tenant"
+      }
+    }
+  ]
+}

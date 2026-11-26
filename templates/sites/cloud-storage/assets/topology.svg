@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" fill="none">
+  <rect width="640" height="200" rx="10" fill="__THEME_SURFACE_ALT__"/>
+  <rect x="28" y="40" width="144" height="120" rx="8" fill="__THEME_SURFACE__" stroke="__THEME_BORDER__" stroke-width="2"/>
+  <rect x="248" y="40" width="144" height="120" rx="8" fill="__THEME_SURFACE__" stroke="__THEME_ACCENT__" stroke-width="2"/>
+  <rect x="468" y="40" width="144" height="120" rx="8" fill="__THEME_SURFACE__" stroke="__THEME_BORDER__" stroke-width="2"/>
+  <path d="M172 100 H248 M392 100 H468" stroke="__THEME_ACCENT__" stroke-width="2.5" stroke-dasharray="5 4"/>
+  <rect x="52" y="64" width="96" height="14" rx="4" fill="__THEME_ACCENT__" opacity="0.3"/>
+  <rect x="52" y="90" width="74" height="10" rx="4" fill="__THEME_MUTED__" opacity="0.45"/>
+  <rect x="52" y="112" width="88" height="10" rx="4" fill="__THEME_MUTED__" opacity="0.3"/>
+  <rect x="272" y="64" width="96" height="14" rx="4" fill="__THEME_ACCENT__"/>
+  <rect x="272" y="90" width="82" height="10" rx="4" fill="__THEME_OK__" opacity="0.7"/>
+  <rect x="272" y="112" width="68" height="10" rx="4" fill="__THEME_MUTED__" opacity="0.45"/>
+  <rect x="492" y="64" width="96" height="14" rx="4" fill="__THEME_OK__" opacity="0.65"/>
+  <rect x="492" y="90" width="76" height="10" rx="4" fill="__THEME_MUTED__" opacity="0.45"/>
+  <rect x="492" y="112" width="88" height="10" rx="4" fill="__THEME_MUTED__" opacity="0.3"/>
+</svg>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Authentication &amp; JWT — __BRAND__</title>
+  <meta name="description" content="Bearer token authentication flow for __DOMAIN__ APIs.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__ Docs</span></a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="/">Overview</a>
+        <a href="/endpoints/">Endpoints</a>
+        <a class="active" href="/authentication/">Auth</a>
+        <a href="/changelog/">Changelog</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="wrap layout">
+    <aside class="sidebar">
+      <h3>Documentation</h3>
+      <ul>
+        <li><a href="/">Introduction</a></li>
+        <li><a href="/endpoints/">REST Endpoints</a></li>
+        <li><a class="active" href="/authentication/">Authentication &amp; JWT</a></li>
+        <li><a href="/changelog/">Release Changelog</a></li>
+      </ul>
+    </aside>
+
+    <main>
+      <h1>Authentication &amp; Tokens</h1>
+      <p class="muted">Service-to-service callers authenticate with <code>client_credentials</code> against <code>/api/v1/auth/token</code>.</p>
+
+      <section class="card">
+        <h2>Token Exchange Sandbox</h2>
+        <p class="muted">Test client credential validation against the live gateway:</p>
+        <form id="token-test-form" style="display:flex;gap:.65rem;flex-wrap:wrap;margin-bottom:1rem">
+          <input id="client-id" type="text" placeholder="client_id" required style="background:var(--bg);border:1px solid var(--border);color:var(--fg);padding:.55rem .8rem;border-radius:8px;min-width:220px">
+          <button class="btn" type="submit">Request Token</button>
+        </form>
+        <pre id="token-test-out">Submit a client_id to inspect the response payload.</pre>
+      </section>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Overview</a>
+        <a href="/endpoints/">Endpoints</a>
+        <a href="/changelog/">Changelog</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

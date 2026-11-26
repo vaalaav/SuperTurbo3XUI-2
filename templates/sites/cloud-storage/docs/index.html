@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>S3 API Documentation — __BRAND__</title>
+  <meta name="description" content="Configure AWS CLI, rclone, and health probes against https://__DOMAIN__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="/">Overview</a>
+        <a href="/pricing/">Pricing</a>
+        <a class="active" href="/docs/">S3 Docs</a>
+        <a href="/about/">Infrastructure</a>
+      </nav>
+      <span class="badge">Operational &bull; __REGION__</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>S3 Gateway &amp; Telemetry API</h1>
+    <p class="lead">Use standard AWS Signature Version 4 clients with endpoint <code>https://__DOMAIN__</code> and region <code>__REGION__</code>.</p>
+
+    <section class="card" style="margin-bottom:1.5rem">
+      <h2>AWS CLI Configuration</h2>
+      <pre>aws configure set default.s3.signature_version s3v4
+aws --endpoint-url https://__DOMAIN__ --region __REGION__ s3 ls s3://your-bucket</pre>
+    </section>
+
+    <section class="card" style="margin-bottom:1.5rem">
+      <h2>rclone Remote Example</h2>
+      <pre>[__BRAND_SLUG__]
+type = s3
+provider = Other
+endpoint = https://__DOMAIN__
+region = __REGION__
+acl = private</pre>
+    </section>
+
+    <section class="card">
+      <h2>Gateway Health Probe</h2>
+      <p class="muted">Public telemetry endpoints return real-time cluster metadata for monitoring integrations.</p>
+      <pre>GET https://__DOMAIN__/api/v1/status
+GET https://__DOMAIN__/api/v1/health</pre>
+      <button id="check-gateway-btn" class="btn" type="button">Query Live Status</button>
+      <pre id="gateway-probe-out" style="margin-top:1rem">Click "Query Live Status" to test /api/v1/status</pre>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Overview</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/about/">Infrastructure</a>
+        <a href="/legal/">Privacy &amp; SLA</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "__BRAND_RAW__ API",
+    "version": "__VERSION__",
+    "contact": {
+      "email": "__CONTACT_EMAIL__"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://__DOMAIN__",
+      "description": "Production (__REGION__)"
+    }
+  ],
+  "paths": {
+    "/api/v1/status": {
+      "get": {
+        "summary": "Gateway status and version metadata",
+        "responses": {
+          "200": { "description": "Operational metadata" }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Liveness check",
+        "responses": {
+          "200": { "description": "Service is healthy" }
+        }
+      }
+    },
+    "/api/v1/auth/token": {
+      "post": {
+        "summary": "Exchange service credentials for JWT",
+        "responses": {
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    }
+  }
+}

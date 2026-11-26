@@ -1,0 +1,26 @@
+[
+  {
+    "id": "inc-104",
+    "date": "__DATE_1__",
+    "component": "Edge Ingress (__REGION__)",
+    "status": "Resolved",
+    "title": "Elevated TLS handshake latency in __REGION__",
+    "summary": "A brief upstream peering flap caused a 3-minute latency increase (~__LATENCY_MS__ms -> 48ms). Traffic was automatically rerouted."
+  },
+  {
+    "id": "inc-103",
+    "date": "__DATE_2__",
+    "component": "Telemetry & Metrics Collector",
+    "status": "Completed",
+    "title": "Scheduled collector upgrade to v__VERSION__",
+    "summary": "Zero-downtime rolling restart of ingestion workers completed across __NODES_COUNT__ monitoring nodes."
+  },
+  {
+    "id": "inc-102",
+    "date": "__DATE_3__",
+    "component": "Artifact Registry Sync",
+    "status": "Resolved",
+    "title": "Delayed mirror sync from secondary upstream",
+    "summary": "Checksum queue backlog cleared after increasing worker concurrency."
+  }
+]

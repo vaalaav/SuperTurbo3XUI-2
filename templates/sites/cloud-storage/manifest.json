@@ -1,0 +1,105 @@
+{
+  "id": "cloud-storage",
+  "title": "Cloud Object Storage",
+  "description": "Портал S3-совместимого объектного хранилища: тарифы, документация API, статус и консоль входа",
+  "brand_nouns": ["Storage", "Vault", "Objects", "Archive", "Store"],
+  "taglines": [
+    "S3-compatible NVMe object storage for distributed engineering teams",
+    "Predictable high-throughput object storage with regional erasure coding",
+    "Enterprise S3-compatible block and object gateway in European data centers"
+  ],
+  "email_locals": ["support", "ops", "storage", "noc"],
+  "pages": [
+    "/",
+    "/pricing/",
+    "/docs/",
+    "/about/",
+    "/legal/"
+  ],
+  "robots_disallow": [
+    "/api/",
+    "/console/"
+  ],
+  "themes": [
+    {
+      "name": "slate-sky",
+      "bg": "#0b1120",
+      "surface": "#111827",
+      "surface_alt": "#1e293b",
+      "border": "#1f2937",
+      "fg": "#e5e7eb",
+      "muted": "#94a3b8",
+      "accent": "#38bdf8",
+      "accent_fg": "#082f49",
+      "ok": "#34d399"
+    },
+    {
+      "name": "graphite-amber",
+      "bg": "#111315",
+      "surface": "#181b1f",
+      "surface_alt": "#22262c",
+      "border": "#2c313a",
+      "fg": "#f1f5f9",
+      "muted": "#9ca3af",
+      "accent": "#f59e0b",
+      "accent_fg": "#271803",
+      "ok": "#22c55e"
+    },
+    {
+      "name": "indigo-teal",
+      "bg": "#0f172a",
+      "surface": "#162033",
+      "surface_alt": "#1e293b",
+      "border": "#26334d",
+      "fg": "#e2e8f0",
+      "muted": "#94a3b8",
+      "accent": "#2dd4bf",
+      "accent_fg": "#042f2e",
+      "ok": "#4ade80"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "path": "/api/v1/status",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "service": "__BRAND_RAW__",
+        "domain": "__DOMAIN__",
+        "status": "operational",
+        "version": "__VERSION__",
+        "region": "__REGION__",
+        "uptime_30d": "__UPTIME__"
+      }
+    },
+    {
+      "path": "/api/v1/health",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "ok": true,
+        "region": "__REGION__",
+        "latency_ms": "__LATENCY_MS__"
+      }
+    },
+    {
+      "path": "/api/v1/auth/session",
+      "status": 401,
+      "content_type": "application/json",
+      "rate_limit": "zone=auth_limit burst=2 nodelay",
+      "body": {
+        "error": "unauthorized",
+        "message": "Invalid access key or expired session token"
+      }
+    },
+    {
+      "path": "/api/v1/buckets",
+      "status": 403,
+      "content_type": "application/json",
+      "body": {
+        "error": "forbidden",
+        "message": "Bucket listing requires signed AWSv4 Authorization header"
+      }
+    }
+  ]
+}

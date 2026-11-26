@@ -264,6 +264,91 @@ EOF
     esac
 }
 
+mask_manage() {
+    local sub="${1:-status}"
+    local mask_api_conf="/etc/nginx/conf.d/masksite-api/site.conf"
+    case "$sub" in
+        status)
+            echo -e "\n${BOLD}${CYAN}=== МАСКИРОВКА ДОМЕНА (${DOMAIN:-N/A}) ===${NC}"
+            echo "  Шаблон:      ${MASK_TEMPLATE:-N/A}"
+            echo "  Бренд:       ${BRAND_NAME:-N/A}"
+            echo "  Регион:      ${NODE_REGION:-N/A} | Версия: ${APP_VER:-N/A}"
+            [[ -n "${MASK_SEED:-}" ]] && echo "  Seed:        ${MASK_SEED}"
+            [[ "${MASK_TEMPLATE:-}" == "reverse-proxy" ]] && echo "  Proxy URL:   ${REVERSE_PROXY_URL:-N/A}"
+            if [[ -d /var/www/masksite ]]; then
+                local fcount
+                fcount=$(find /var/www/masksite -type f 2>/dev/null | wc -l)
+                echo "  Файлов:      ${fcount} в /var/www/masksite"
+            fi
+            echo ""
+            ;;
+        list)
+            echo -e "\n${BOLD}${CYAN}=== ДОСТУПНЫЕ ШАБЛОНЫ ===${NC}"
+            python3 "${INSTALL_DIR}/lib/mask_site.py" list --templates-dir="${INSTALL_DIR}/templates/sites" | while IFS=$'\t' read -r tid title desc; do
+                printf "  %-16s %s — %s\n" "$tid" "$title" "$desc"
+            done
+            printf "  %-16s %s\n" "random" "Случайный локальный портал"
+            printf "  %-16s %s\n\n" "reverse-proxy" "Обратный прокси на внешний URL"
+            ;;
+        set)
+            local tpl="${2:-}"
+            local rp_url="${3:-}"
+            [[ -n "$tpl" ]] || { echo "Использование: my3xui mask set <cloud-storage|status-hub|dev-docs|saas-analytics|tech-journal|random|reverse-proxy> [url]"; return 1; }
+            [[ -n "${DOMAIN:-}" ]] || { echo -e "${RED}Домен не задан в ${STATE_FILE}.${NC}"; return 1; }
+            # shellcheck disable=SC1091
+            source "${INSTALL_DIR}/lib/common.sh"
+            case "$tpl" in
+                reverse-proxy)
+                    if [[ -z "$rp_url" ]]; then
+                        read -erp "URL для Reverse Proxy (https://...): " rp_url
+                        rp_url=$(echo "$rp_url" | tr -d '[:space:]')
+                    fi
+                    [[ -n "$rp_url" ]] || { echo -e "${RED}Не указан URL для reverse-proxy.${NC}"; return 1; }
+                    save_var MASK_TEMPLATE "reverse-proxy"
+                    save_var REVERSE_PROXY_URL "$rp_url"
+                    rm -rf /var/www/masksite/*
+                    python3 "${INSTALL_DIR}/lib/mask_site.py" cleanup-api-conf --nginx-api-conf="${mask_api_conf}"
+                    bash "${INSTALL_DIR}/install.sh" --only 07_nginx_config
+                    ;;
+                *)
+                    local meta new_tpl new_brand new_seed new_region new_ver
+                    meta=$(python3 "${INSTALL_DIR}/lib/mask_site.py" deploy \
+                        --templates-dir="${INSTALL_DIR}/templates/sites" \
+                        --template="${tpl}" \
+                        --domain="${DOMAIN}" \
+                        --output-dir=/var/www/masksite \
+                        --nginx-api-conf="${mask_api_conf}")
+                    new_tpl=$(jq -r '.template' <<<"$meta")
+                    new_brand=$(jq -r '.brand_name' <<<"$meta")
+                    new_seed=$(jq -r '.mask_seed' <<<"$meta")
+                    new_region=$(jq -r '.node_region' <<<"$meta")
+                    new_ver=$(jq -r '.app_ver' <<<"$meta")
+                    chown -R www-data:www-data /var/www/masksite
+                    save_var MASK_TEMPLATE "$new_tpl"
+                    save_var REVERSE_PROXY_URL ""
+                    save_var BRAND_NAME "$new_brand"
+                    save_var MASK_SEED "$new_seed"
+                    save_var NODE_REGION "$new_region"
+                    save_var APP_VER "$new_ver"
+                    bash "${INSTALL_DIR}/install.sh" --only 07_nginx_config
+                    echo -e "${GREEN}[OK] Развёрнут портал ${new_tpl} (${new_brand}, seed: ${new_seed}).${NC}"
+                    ;;
+            esac
+            ;;
+        regen)
+            local cur="${MASK_TEMPLATE:-cloud-storage}"
+            if [[ "$cur" == "reverse-proxy" ]]; then
+                echo -e "${YELLOW}Перегенерация доступна только для автономных шаблонов (текущий: ${cur}).${NC}"
+                return 1
+            fi
+            mask_manage set "$cur"
+            ;;
+        *)
+            echo "Использование: my3xui mask [status|list|set <шаблон> [url]|regen]"
+            ;;
+    esac
+}
+
 self_update() {
     [[ -f "${INSTALL_DIR}/.repo" ]] || { echo -e "${RED}Файл ${INSTALL_DIR}/.repo не найден.${NC}"; return 1; }
     # shellcheck disable=SC1091
@@ -327,6 +412,7 @@ case "${1:-}" in
     security)        show_security ;;
     audit)           run_audit ;;
     ssh)             ssh_manage "${2:-status}" ;;
+    mask)            mask_manage "${2:-status}" "${3:-}" "${4:-}" ;;
     update-scanners) /usr/local/sbin/update-antiscan.py ;;
     run)             bash "${INSTALL_DIR}/install.sh" --only "${2:-}" ;;
     self-update)     self_update ;;
@@ -341,11 +427,12 @@ case "${1:-}" in
             echo "  3. Безопасность (UFW/F2B/CrowdSec/Antiscan)"
             echo "  4. Полный аудит + E2E тест VPN"
             echo "  5. Управление SSH (ключи / порт / пароль)"
-            echo "  6. Обновить списки сканеров"
-            echo "  7. Обновить модули из GitHub"
-            echo -e "  8. ${RED}Полная очистка сервера${NC}"
+            echo "  6. Маскировка домена (шаблон сайта)"
+            echo "  7. Обновить списки сканеров"
+            echo "  8. Обновить модули из GitHub"
+            echo -e "  9. ${RED}Полная очистка сервера${NC}"
             echo "  0. Выход"
-            read -erp "Выбор [0-8]: " ch
+            read -erp "Выбор [0-9]: " ch
             case "$ch" in
                 1) show_info ;;
                 2) show_creds ;;
@@ -363,9 +450,26 @@ case "${1:-}" in
                         5) ssh_manage change-port ;;
                     esac
                     ;;
-                6) /usr/local/sbin/update-antiscan.py || true ;;
-                7) self_update ;;
-                8) clean_server ;;
+                6)
+                    mask_manage status
+                    echo "  [1] list            [2] set cloud-storage   [3] set status-hub"
+                    echo "  [4] set dev-docs    [5] set saas-analytics  [6] set tech-journal"
+                    echo "  [7] set random      [8] regen"
+                    read -erp "  Действие mask: " mc
+                    case "$mc" in
+                        1) mask_manage list ;;
+                        2) mask_manage set cloud-storage ;;
+                        3) mask_manage set status-hub ;;
+                        4) mask_manage set dev-docs ;;
+                        5) mask_manage set saas-analytics ;;
+                        6) mask_manage set tech-journal ;;
+                        7) mask_manage set random ;;
+                        8) mask_manage regen ;;
+                    esac
+                    ;;
+                7) /usr/local/sbin/update-antiscan.py || true ;;
+                8) self_update ;;
+                9) clean_server ;;
                 0) exit 0 ;;
             esac
         done

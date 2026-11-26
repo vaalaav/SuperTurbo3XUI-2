@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__BRAND__ — Distributed NVMe Object Storage</title>
+  <meta name="description" content="__TAGLINE__">
+  <link rel="canonical" href="https://__DOMAIN__/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="__BRAND__ — Distributed NVMe Object Storage">
+  <meta property="og:description" content="__TAGLINE__">
+  <meta property="og:url" content="https://__DOMAIN__/">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "__BRAND_RAW__",
+    "url": "https://__DOMAIN__/",
+    "email": "__CONTACT_EMAIL__"
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="active" href="/">Overview</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/docs/">S3 Docs</a>
+        <a href="/about/">Infrastructure</a>
+      </nav>
+      <span class="badge">Operational &bull; __REGION__</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <h1>S3-Compatible NVMe Object Gateway</h1>
+        <p class="lead">__TAGLINE__. Dedicated cluster endpoint for <strong>__DOMAIN__</strong> with multi-zone erasure coding and strict bucket isolation.</p>
+        <div class="actions">
+          <a class="btn" href="/docs/">Read S3 API Docs</a>
+          <a class="btn btn-secondary" href="/pricing/">Storage Tiers</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="k">Console Sign-In</div>
+        <p class="muted" style="font-size:.9rem;margin:.5rem 0">Authenticate with tenant Access Key ID and Secret Key to manage buckets and lifecycle rules.</p>
+        <form id="console-auth-form" class="auth-form">
+          <input id="access-key" type="text" placeholder="Access Key ID" autocomplete="username" required>
+          <input id="secret-key" type="password" placeholder="Secret Key" autocomplete="current-password" required>
+          <button class="btn" type="submit">Sign In</button>
+        </form>
+        <div id="auth-msg" class="form-msg" role="status"></div>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="Cluster telemetry">
+      <div class="card"><div class="k">Primary Region</div><div class="v">__REGION__</div></div>
+      <div class="card"><div class="k">Gateway Release</div><div class="v">v__VERSION__</div></div>
+      <div class="card"><div class="k">30-Day Availability</div><div class="v ok-text">__UPTIME__</div></div>
+      <div class="card"><div class="k">Storage Nodes</div><div class="v">__NODES_COUNT__ NVMe</div></div>
+    </section>
+
+    <section class="grid-3">
+      <article class="card">
+        <h3>AWSv4 &amp; Presigned URLs</h3>
+        <p class="muted">Drop-in compatibility with <code>aws-cli</code>, <code>rclone</code>, Terraform state backends, and Go/Python S3 SDKs over TLS 1.3 and HTTP/2.</p>
+      </article>
+      <article class="card">
+        <h3>Reed-Solomon EC 4+2</h3>
+        <p class="muted">Objects are striped across independent NVMe racks with continuous checksum scrubbing and automatic background repair.</p>
+      </article>
+      <article class="card">
+        <h3>Immutable Bucket Locks</h3>
+        <p class="muted">WORM Object Lock retention policies protect database backups and audit archives against accidental deletion or ransomware.</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="k">Recent Release Notes</div>
+      <ul class="muted" style="padding-left:1.2rem;margin:.75rem 0 0">
+        <li><strong>__DATE_1__</strong> — Gateway v__VERSION__ rolled out across __REGION__ with faster multipart upload completion.</li>
+        <li><strong>__DATE_2__</strong> — Added automated bucket lifecycle transitions for cold backup prefixes.</li>
+        <li><strong>__DATE_3__</strong> — Network capacity expanded to __THROUGHPUT__ Gbps aggregate ingress.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/pricing/">Pricing</a>
+        <a href="/docs/">Documentation</a>
+        <a href="/about/">Infrastructure</a>
+        <a href="/legal/">Privacy &amp; SLA</a>
+        <a href="/sitemap.xml">Sitemap</a>
+      </div>
+    </div>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

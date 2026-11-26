@@ -6,7 +6,8 @@ require_root
 load_state
 
 mkdir -p "/etc/nginx/ssl/${DOMAIN}" /var/www/html /var/www/masksite \
-         /var/www/geo /var/cache/nginx/html_cache /etc/nginx/conf.d/node-ext
+         /var/www/geo /var/cache/nginx/html_cache /etc/nginx/conf.d/node-ext \
+         /etc/nginx/conf.d/masksite-api
 
 log_info "Подготовка ACME webroot для ${DOMAIN}..."
 cat <<EOF > /etc/nginx/nginx.conf
@@ -55,41 +56,33 @@ systemctl reload nginx
 EOF
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 
-PREFIX=$(echo "$DOMAIN" | cut -d. -f1 | sed -E 's/^(.)/\U\1/')
-SUFFIXES=("Cloud" "Core" "Grid" "Stack" "Pulse" "Axis" "Mesh" "Vault")
-BRAND_NAME="${PREFIX}${SUFFIXES[$((RANDOM % ${#SUFFIXES[@]}))]}"
-BUILD_ID=$(openssl rand -hex 4)
-REGIONS=("eu-central-1" "eu-north-1" "eu-west-1" "eu-west-3")
-NODE_REGION="${REGIONS[$((RANDOM % ${#REGIONS[@]}))]}"
-APP_VER="2.$(( (RANDOM % 5) + 1 )).$(( RANDOM % 9 ))"
-
-save_var BRAND_NAME "$BRAND_NAME"
-save_var NODE_REGION "$NODE_REGION"
-save_var APP_VER "$APP_VER"
-
+MASK_API_CONF="/etc/nginx/conf.d/masksite-api/site.conf"
 rm -rf /var/www/masksite/*
 case "${MASK_TEMPLATE:-cloud-storage}" in
-    myfakesite)
-        log_info "Загрузка и уникализация iqubik/myfakesite (${BRAND_NAME})..."
-        BASE_RAW="https://raw.githubusercontent.com/iqubik/myfakesite/main/data"
-        curl -fsSL "${BASE_RAW}/index.html" -o /var/www/masksite/index.html
-        curl -fsSL "${BASE_RAW}/favicon.ico" -o /var/www/masksite/favicon.ico || true
-        sed -i "s/MySphere/${BRAND_NAME}/g; s/YOUDOMEN\.XXX/${DOMAIN}/g" /var/www/masksite/index.html
-        sed -i "s|</head>|    <meta name=\"build-id\" content=\"${BUILD_ID}\">\n</head>|" /var/www/masksite/index.html
-        ;;
     reverse-proxy)
         log_info "Режим маскировки: Reverse Proxy -> ${REVERSE_PROXY_URL}"
+        python3 "${BASE_DIR}/lib/mask_site.py" cleanup-api-conf --nginx-api-conf="${MASK_API_CONF}"
         ;;
-    cloud-storage|status-hub|dev-docs)
-        SRC_HTML="${BASE_DIR}/templates/sites/${MASK_TEMPLATE}.html"
-        [[ -f "$SRC_HTML" ]] || SRC_HTML="${BASE_DIR}/templates/sites/cloud-storage.html"
-        log_info "Развёртывание автономного шаблона ${MASK_TEMPLATE} (${BRAND_NAME})..."
-        sed -e "s|__BRAND__|${BRAND_NAME}|g" \
-            -e "s|__DOMAIN__|${DOMAIN}|g" \
-            -e "s|__REGION__|${NODE_REGION}|g" \
-            -e "s|__VERSION__|${APP_VER}|g" \
-            -e "s|__BUILD__|${BUILD_ID}|g" \
-            "$SRC_HTML" > /var/www/masksite/index.html
+    *)
+        log_info "Развёртывание многостраничного портала ${MASK_TEMPLATE:-cloud-storage}..."
+        MASK_META=$(python3 "${BASE_DIR}/lib/mask_site.py" deploy \
+            --templates-dir="${BASE_DIR}/templates/sites" \
+            --template="${MASK_TEMPLATE:-cloud-storage}" \
+            --domain="${DOMAIN}" \
+            --output-dir=/var/www/masksite \
+            --nginx-api-conf="${MASK_API_CONF}" \
+            --mask-seed="${MASK_SEED:-}")
+        MASK_TEMPLATE=$(jq -r '.template' <<<"$MASK_META")
+        BRAND_NAME=$(jq -r '.brand_name' <<<"$MASK_META")
+        MASK_SEED=$(jq -r '.mask_seed' <<<"$MASK_META")
+        NODE_REGION=$(jq -r '.node_region' <<<"$MASK_META")
+        APP_VER=$(jq -r '.app_ver' <<<"$MASK_META")
+        save_var MASK_TEMPLATE "$MASK_TEMPLATE"
+        save_var BRAND_NAME "$BRAND_NAME"
+        save_var MASK_SEED "$MASK_SEED"
+        save_var NODE_REGION "$NODE_REGION"
+        save_var APP_VER "$APP_VER"
+        log_ok "Портал ${MASK_TEMPLATE} (${BRAND_NAME}, тема: $(jq -r '.theme' <<<"$MASK_META")) развёрнут."
         ;;
 esac
 

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stateless Edge Filtering with XDP and nftables Sets — __BRAND__</title>
+  <meta name="description" content="Packet drop benchmarks comparing nftables hash sets and early ingress rate limiting.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Editorial navigation">
+        <a href="/">Latest</a>
+        <a class="active" href="/articles/">Archive</a>
+        <a href="/topics/">Topics</a>
+        <a href="/about/">Editorial</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article class="article-body">
+      <div class="meta">Published __DATE_1__ &bull; Linux Networking &bull; Region lab: __REGION__</div>
+      <h1>Stateless Edge Filtering with XDP and nftables Sets</h1>
+      <p>High-volume internet scanners constantly probe TCP/443 across public cloud prefixes. When every invalid SYN or HTTP scan allocates a stateful connection tracking entry, memory pressure spikes before user-space proxies even inspect a request.</p>
+      <img src="/assets/architecture.svg" alt="Packet processing pipeline diagram" width="680" height="220">
+      <h2>1. Separating L3/L4 Sets from Conntrack</h2>
+      <p>By evaluating CIDR prefix sets in the <code>ingress</code> or <code>prerouting</code> hook prior to stateful tracking, kernels drop noisy traffic in nanoseconds per packet. Our testbed in __REGION_CITY__ observed median handshake latency remaining steady at __LATENCY_MS__ ms even under synthetic SYN floods.</p>
+      <pre>table inet edge_filter {
+  set blocked_v4 {
+    type ipv4_addr
+    flags interval
+    auto-merge
+  }
+}</pre>
+      <h2>2. Key Takeaways</h2>
+      <ul>
+        <li>Always use <code>flags interval</code> with <code>auto-merge</code> for large CIDR lists to prevent O(N) rule traversal.</li>
+        <li>Keep rate-limit zones isolated in Nginx for application-layer bursts while letting nftables handle known bad prefixes.</li>
+      </ul>
+      <p><a href="/articles/">&larr; Back to Archive</a></p>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Latest</a>
+        <a href="/topics/">Topics</a>
+        <a href="/rss.xml">RSS Feed</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

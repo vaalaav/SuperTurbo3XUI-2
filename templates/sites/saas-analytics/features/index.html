@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Platform Capabilities — __BRAND__</title>
+  <meta name="description" content="Event ingestion, SQL exploration, and anomaly detection capabilities of __BRAND__.">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="/"><img src="/assets/logo.svg" alt="__BRAND__ logo"><span>__BRAND__</span></a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="/">Platform</a>
+        <a class="active" href="/features/">Capabilities</a>
+        <a href="/integrations/">Integrations</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/contact/">Request Demo</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Built for High-Cardinality Telemetry</h1>
+    <p class="lead">Capture every product interaction, API call, and billing state transition without sampling away edge cases.</p>
+
+    <section class="grid-3">
+      <article class="card">
+        <h3>SDKs &amp; HTTP Collector</h3>
+        <p class="muted">Lightweight TypeScript, Go, Python, and Swift collectors batch events efficiently over HTTP/2 with automatic retry backoff.</p>
+      </article>
+      <article class="card">
+        <h3>SQL &amp; Visual Query Builder</h3>
+        <p class="muted">Switch seamlessly between point-and-click funnel builders and parameterized SQL views for custom cohort reporting.</p>
+      </article>
+      <article class="card">
+        <h3>PII Redaction at Edge</h3>
+        <p class="muted">Hash or drop sensitive fields before persistence so analytics remain compliant with GDPR and internal security audits.</p>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Quick Event Ingestion Example</h2>
+      <pre>curl -sS -X POST https://__DOMAIN__/api/v1/pipelines/summary
+# Live worker summary in __REGION__ (__REGION_CITY__)</pre>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <span>&copy; __YEAR_RANGE__ __BRAND__ &bull; __CONTACT_EMAIL__</span>
+      <div class="footer-links">
+        <a href="/">Platform</a>
+        <a href="/integrations/">Integrations</a>
+        <a href="/pricing/">Pricing</a>
+        <a href="/legal/">GDPR &amp; Privacy</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

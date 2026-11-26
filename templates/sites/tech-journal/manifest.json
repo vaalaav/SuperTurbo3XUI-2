@@ -1,0 +1,85 @@
+{
+  "id": "tech-journal",
+  "title": "Systems Engineering Journal",
+  "description": "Инженерный техно-портал и журнал статей по Linux, сетям, хранилищам и распределённым системам с RSS и каталогом тем",
+  "brand_nouns": ["Journal", "Dispatch", "Systems", "Notes", "Review"],
+  "taglines": [
+    "Deep-dive engineering notes on Linux networking, storage engines, and distributed reliability",
+    "Practical benchmarks, kernel internals, and production postmortems for infrastructure engineers",
+    "Independent systems engineering publication covering modern cloud and edge architecture"
+  ],
+  "email_locals": ["editors", "hello", "submissions", "press"],
+  "pages": [
+    "/",
+    "/articles/",
+    "/articles/ebpf-edge-filtering/",
+    "/articles/nvme-raid-benchmarks/",
+    "/topics/",
+    "/about/"
+  ],
+  "robots_disallow": [
+    "/api/",
+    "/drafts/"
+  ],
+  "themes": [
+    {
+      "name": "paper-crimson",
+      "bg": "#faf9f6",
+      "surface": "#ffffff",
+      "surface_alt": "#f3f1ec",
+      "border": "#e4e0d8",
+      "fg": "#1c1917",
+      "muted": "#57534e",
+      "accent": "#b91c1c",
+      "accent_fg": "#ffffff",
+      "ok": "#15803d"
+    },
+    {
+      "name": "editorial-navy",
+      "bg": "#f8fafc",
+      "surface": "#ffffff",
+      "surface_alt": "#f1f5f9",
+      "border": "#cbd5e1",
+      "fg": "#0f172a",
+      "muted": "#475569",
+      "accent": "#1d4ed8",
+      "accent_fg": "#ffffff",
+      "ok": "#047857"
+    },
+    {
+      "name": "charcoal-sage",
+      "bg": "#141615",
+      "surface": "#1c1f1d",
+      "surface_alt": "#252926",
+      "border": "#323834",
+      "fg": "#eceeed",
+      "muted": "#a3aba5",
+      "accent": "#6ee7b7",
+      "accent_fg": "#062c1f",
+      "ok": "#34d399"
+    }
+  ],
+  "api_endpoints": [
+    {
+      "path": "/api/v1/status",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "publication": "__BRAND_RAW__",
+        "domain": "__DOMAIN__",
+        "edition": "__VERSION__",
+        "status": "online"
+      }
+    },
+    {
+      "path": "/api/v1/newsletter",
+      "status": 202,
+      "content_type": "application/json",
+      "rate_limit": "zone=auth_limit burst=2 nodelay",
+      "body": {
+        "subscribed": true,
+        "message": "Check your inbox to confirm your weekly engineering digest subscription."
+      }
+    }
+  ]
+}

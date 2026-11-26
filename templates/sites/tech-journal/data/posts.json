@@ -1,0 +1,18 @@
+[
+  {
+    "title": "Stateless Edge Filtering with XDP and nftables Sets",
+    "url": "/articles/ebpf-edge-filtering/",
+    "date": "__DATE_1__",
+    "topic": "Linux Networking",
+    "read_time": "8 min read",
+    "summary": "Measuring packet drop overhead across 25GbE NICs when combining kernel nftables hash sets with early ingress rate limiting."
+  },
+  {
+    "title": "NVMe RAID-10 vs Erasure Coding for Distributed Object Nodes",
+    "url": "/articles/nvme-raid-benchmarks/",
+    "date": "__DATE_2__",
+    "topic": "Storage Systems",
+    "read_time": "11 min read",
+    "summary": "Evaluating tail latency, rebuild bandwidth, and CPU cost of Reed-Solomon EC 4+2 versus mirrored NVMe pools in __REGION__."
+  }
+]
