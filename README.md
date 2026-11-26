@@ -12,7 +12,7 @@
 ![Debian](https://img.shields.io/badge/Debian-12%20%7C%2013-A81D33?logo=debian&logoColor=white)
 ![3x-ui](https://img.shields.io/badge/3x--ui-%E2%89%A5%203.11.0-2563EB)
 ![Anti-DPI](https://img.shields.io/badge/Anti--DPI-Reality%20%2B%20XHTTP-10B981)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: PolyForm Strict 1.0.0](https://img.shields.io/badge/License-PolyForm_Strict_1.0.0-orange.svg)](LICENSE)
 
 [Быстрый старт](#-быстрый-старт) •
 [Возможности](#-возможности) •
@@ -199,7 +199,7 @@ flowchart LR
 
 ## ⚖️ Лицензия и ответственность
 
-Код проекта распространяется по лицензии [MIT](LICENSE).
+Copyright (c) 2026 vaalaav. Код проекта распространяется по лицензии [PolyForm Strict 1.0.0](LICENSE) (разрешено некоммерческое использование; распространение и модификация запрещены).
 
 Перед использованием ознакомьтесь с лицензиями сторонних компонентов и правилами их применения в вашей юрисдикции.
 
