@@ -38,7 +38,7 @@ jq -e '[.obj[] | select(.name == "install")] | length == 0' <<<"$tokens" >/dev/n
     && ok "установочный токен install отозван" || bad "остался установочный токен install"
 [[ ! -e /etc/x-ui/install-result.env ]] && ok "install-result.env удалён" || bad "остался /etc/x-ui/install-result.env с паролем и токеном"
 
-links=$(api /panel/api/clients/links/user1 | jq -r '.obj[]?')
+links=$(api /panel/api/clients/links/audit_system | jq -r '.obj[]?')
 grep -q "^vless://${CLIENT_UUID}@${DOMAIN}:443?.*security=reality" <<<"$links" \
     && ok "ссылка Reality на ${DOMAIN}:443 с нашим UUID" || bad "нет корректной ссылки Reality"
 grep -q "^vless://${CLIENT_UUID}@${DOMAIN}:443?.*security=tls.*type=xhttp" <<<"$links" \

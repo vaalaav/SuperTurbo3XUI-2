@@ -185,7 +185,7 @@ class FakeXrayPanel(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/p/panel/api/server/status":
             return self._send({"success": True, "obj": {"xray": {"state": "running"}}})
-        if self.path == "/p/panel/api/clients/links/user1":
+        if self.path == "/p/panel/api/clients/links/audit_system":
             return self._send({"success": True, "obj": self.links})
         self._send({"success": False, "msg": "404"})
 
@@ -333,7 +333,7 @@ class ClientLinksTest(unittest.TestCase):
 
     def run_links(self) -> str:
         args = argparse.Namespace(
-            panel_port=str(self.server.server_port), panel_path="p", panel_user="", panel_pass="", email="user1"
+            panel_port=str(self.server.server_port), panel_path="p", panel_user="", panel_pass="", email="audit_system"
         )
         out = io.StringIO()
         with mock.patch.dict(os.environ, {"XUI_API_TOKEN": "t"}), contextlib.redirect_stdout(out):
@@ -482,7 +482,7 @@ class ArgumentFormTest(unittest.TestCase):
 
 
 class SetupNodeLimitIpTest(unittest.TestCase):
-    """setup-node передаёт limitIp клиента user1 в add_client."""
+    """setup-node передаёт limitIp клиента audit_system в add_client."""
 
     def _run_setup_capturing_client(self, limit_ip_arg: str) -> dict:
         captured: dict = {}

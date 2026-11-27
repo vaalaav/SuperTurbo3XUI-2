@@ -40,7 +40,7 @@ chmod +x /etc/update-motd.d/99-my3xui
 # Ссылки берутся у панели — ровно те, что получит клиент в подписке (модуль 05 их уже сверил).
 wait_xui_ready
 ensure_xui_api_token
-if LINKS=$(python3 "${BASE_DIR}/lib/xui_api.py" client-links --email=user1 \
+if LINKS=$(python3 "${BASE_DIR}/lib/xui_api.py" client-links --email=audit_system \
         --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
         --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}"); then
     LINK_REALITY=$(grep -m1 'type=tcp' <<<"$LINKS" || true)
@@ -71,7 +71,7 @@ Reality PBK: ${REALITY_PUB}
 Reality SID: ${SHORT_ID_1}
 XHTTP Path:  /${XHTTP_PATH}/
 
-=== VLESS Links (user1) ===
+=== VLESS Links (audit_system) ===
 [Reality]
 ${LINK_REALITY:-$NO_LINK}
 
