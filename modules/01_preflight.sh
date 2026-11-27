@@ -24,9 +24,9 @@ if [[ -f /etc/os-release ]]; then
 fi
 
 # 2. Базовые инструменты для проверок
-command -v curl    >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq curl; }
-command -v python3 >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq python3; }
-command -v openssl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq openssl; }
+command -v curl    >/dev/null 2>&1 || { apt_get update -qq && apt_get install -y -qq curl; }
+command -v python3 >/dev/null 2>&1 || { apt_get update -qq && apt_get install -y -qq python3; }
+command -v openssl >/dev/null 2>&1 || { apt_get update -qq && apt_get install -y -qq openssl; }
 
 # Версия 3x-ui: по умолчанию проверенный релиз, переопределяется XUI_VERSION=vX.Y.Z или --xui-version.
 XUI_VERSION="${XUI_VERSION:-$XUI_DEFAULT_VERSION}"

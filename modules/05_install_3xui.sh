@@ -135,7 +135,7 @@ fi
 
 # Все geo-файлы обновляются при каждой установке штатным механизмом панели (сверка с дайджестом
 # релиза, атомарная замена) — до настройки шаблона, чтобы его правила проверялись по свежим файлам.
-log_info "Обновление geo-файлов 3x-ui (Loyalsoldier, IR, RU)..."
+log_info "Обновление geo-файлов 3x-ui (Loyalsoldier, IR, RU; может занять до 5 мин)..."
 python3 "${BASE_DIR}/lib/xui_api.py" update-geo \
     --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
     --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" >/dev/null \

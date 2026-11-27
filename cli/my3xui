@@ -832,14 +832,14 @@ clean_server() {
 
     local purge_pkgs=() pkg
     for pkg in nginx nginx-common nginx-core crowdsec crowdsec-firewall-bouncer-nftables fail2ban; do
-        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qE 'installed|config-files'; then
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -qE 'installed|config-files|half-configured|half-installed|unpacked'; then
             purge_pkgs+=("$pkg")
         fi
     done
     if (( ${#purge_pkgs[@]} > 0 )); then
-        apt-get purge -y -qq "${purge_pkgs[@]}" >/dev/null 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 purge -y -qq "${purge_pkgs[@]}" >/dev/null 2>&1 || true
     fi
-    apt-get autoremove -y -qq >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 autoremove -y -qq >/dev/null 2>&1 || true
 
     nft delete table inet antiscan 2>/dev/null || true
     nft delete table ip crowdsec 2>/dev/null || true
@@ -854,12 +854,14 @@ clean_server() {
            /etc/systemd/system/antiscan-* /etc/systemd/system/nginx.service.d /etc/systemd/system/x-ui.service.d \
            /etc/systemd/system/cloudflared-doh.service /etc/systemd/system/3xui-node-doh.service /etc/systemd/resolved.conf.d/10-dot.conf \
            /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx /usr/share/keyrings/nginx-archive-keyring.gpg \
+           /etc/apt/sources.list.d/crowdsec_*.list /etc/apt/keyrings/crowdsec_*.gpg \
            /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh \
            /etc/sysctl.d/99-xray-custom.conf /etc/cron.d/update-geo-mirror /etc/update-motd.d/99-my3xui \
            /root/vps-credentials.txt /root/3xui-node-backups /var/log/3xui-node-install.log /usr/local/bin/my3xui \
            /usr/bin/x-ui /etc/systemd/system/x-ui.service /var/log/3xui-node-xui-install.log \
            /usr/local/sbin/3xui-node-geo-update /etc/systemd/system/3xui-node-geo-update.service \
-           /etc/systemd/system/3xui-node-geo-update.timer /var/log/3xui-node-psiphon-install.log
+           /etc/systemd/system/3xui-node-geo-update.timer /var/log/3xui-node-psiphon-install.log \
+           /var/log/3xui-node-crowdsec-install.log
 
     systemctl restart systemd-resolved 2>/dev/null || true
     sysctl --system >/dev/null 2>&1 || true

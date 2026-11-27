@@ -60,6 +60,79 @@ if [[ -n "$CONFIG_FILE" ]]; then
     log_ok "Конфигурация загружена из ${CONFIG_FILE}"
 fi
 
+is_interactive_tty() {
+    [[ "$NON_INTERACTIVE" != "true" ]] && [[ -t 0 || "${INSTALL_INTERACTIVE_TEST:-false}" == "true" ]]
+}
+
+acquire_install_lock() {
+    command -v flock >/dev/null 2>&1 || return 0
+    init_state
+    exec 9<>"$INSTALL_LOCK_FILE"
+    chmod 600 "$INSTALL_LOCK_FILE" 2>/dev/null || true
+    if flock -n 9; then
+        : > "$INSTALL_LOCK_FILE"
+        printf '%s\n' "$$" >&9
+        return 0
+    fi
+
+    local active_pid=""
+    active_pid=$(tr -dc '0-9' < "$INSTALL_LOCK_FILE" 2>/dev/null || true)
+    log_warn "Обнаружен другой активный процесс установки${active_pid:+ (PID ${active_pid})}."
+    if [[ -n "$active_pid" ]] && ps -p "$active_pid" >/dev/null 2>&1; then
+        ps -p "$active_pid" -o pid,etime,args 2>/dev/null || true
+    fi
+
+    if is_interactive_tty; then
+        local lock_choice
+        while true; do
+            echo ""
+            echo "  [1] Подождать завершения предыдущего процесса (до 120 с)"
+            echo "  [2] Остановить предыдущий процесс (SIGTERM) и продолжить"
+            echo "  [0] Выход"
+            read -erp "  Выбор [1]: " lock_choice
+            case "${lock_choice:-1}" in
+                1)
+                    log_info "Ожидание завершения предыдущей установки..."
+                    flock -w 120 9 || log_err "Предыдущая установка не завершилась за 120 с."
+                    break
+                    ;;
+                2)
+                    if [[ -n "$active_pid" ]] && ps -p "$active_pid" >/dev/null 2>&1; then
+                        kill -TERM "$active_pid" 2>/dev/null || true
+                        sleep 2
+                    fi
+                    flock -w 15 9 || log_err "Не удалось получить блокировку установки (${INSTALL_LOCK_FILE})."
+                    break
+                    ;;
+                0) exit 0 ;;
+                *) echo -e "${YELLOW}Введите 1, 2 или 0.${NC}" ;;
+            esac
+        done
+    else
+        log_info "Ожидание освобождения блокировки установки (до 120 с)..."
+        flock -w 120 9 || log_err "Другой процесс установки ещё выполняется (${INSTALL_LOCK_FILE})."
+    fi
+    : > "$INSTALL_LOCK_FILE"
+    printf '%s\n' "$$" >&9
+}
+
+next_module_after() {
+    local done_mod="$1" idx next_idx
+    for idx in "${!MODULES[@]}"; do
+        if [[ "${MODULES[$idx]}" == "$done_mod" ]]; then
+            next_idx=$((idx + 1))
+            if (( next_idx < ${#MODULES[@]} )); then
+                printf '%s\n' "${MODULES[$next_idx]}"
+                return 0
+            fi
+            return 1
+        fi
+    done
+    return 2
+}
+
+acquire_install_lock
+
 if [[ -n "$XUI_VERSION_ARG" ]]; then
     validate_xui_version "$XUI_VERSION_ARG"
     export XUI_VERSION="$XUI_VERSION_ARG"
@@ -68,21 +141,65 @@ if [[ -n "$XUI_VERSION_ARG" ]]; then
     log_info "Версия 3x-ui зафиксирована: ${XUI_VERSION_ARG}"
 fi
 
-if $RESUME && [[ -f "$PROGRESS_FILE" ]]; then
-    LAST_DONE=$(cat "$PROGRESS_FILE")
-    for idx in "${!MODULES[@]}"; do
-        if [[ "${MODULES[$idx]}" == "$LAST_DONE" ]]; then
-            NEXT_IDX=$((idx + 1))
-            if (( NEXT_IDX < ${#MODULES[@]} )); then
-                FROM_MODULE="${MODULES[$NEXT_IDX]}"
-                log_info "Продолжение с модуля: ${FROM_MODULE}"
-            else
-                log_ok "Все модули уже были завершены ранее."
-                exit 0
-            fi
-            break
+if $RESUME; then
+    if [[ -f "$PROGRESS_FILE" ]]; then
+        LAST_DONE=$(tr -d '[:space:]' < "$PROGRESS_FILE" || true)
+        if NEXT_MOD=$(next_module_after "$LAST_DONE"); then
+            FROM_MODULE="$NEXT_MOD"
+            repair_interrupted_dpkg
+            log_info "Продолжение с модуля: ${FROM_MODULE}"
+        elif [[ "$LAST_DONE" == "${MODULES[$(( ${#MODULES[@]} - 1 ))]}" ]]; then
+            log_ok "Все модули уже были завершены ранее."
+            exit 0
+        else
+            log_warn "Неизвестный модуль в ${PROGRESS_FILE}: ${LAST_DONE:-пусто} — начинаю сначала."
         fi
-    done
+    else
+        log_info "Сохранённый прогресс не найден — запускаю установку сначала."
+    fi
+elif [[ -z "$ONLY_MODULE" && -z "$FROM_MODULE" && -z "$CONFIG_FILE" ]] && is_interactive_tty \
+    && [[ -f "$PROGRESS_FILE" && -f "$STATE_FILE" ]]; then
+    LAST_DONE=$(tr -d '[:space:]' < "$PROGRESS_FILE" || true)
+    if NEXT_MOD=$(next_module_after "$LAST_DONE"); then
+        CUR_MOD=""
+        [[ -f "$CURRENT_MODULE_FILE" ]] && CUR_MOD=$(tr -d '[:space:]' < "$CURRENT_MODULE_FILE" || true)
+        SAVED_META=$(bash -c 'source "$1" 2>/dev/null || true; printf "%s|%s|%s" "${DOMAIN:-}" "${SERVER_IP:-}" "${SSH_PORT:-}"' _ "$STATE_FILE")
+        IFS='|' read -r SAVED_DOMAIN SAVED_IP SAVED_SSH <<<"$SAVED_META"
+
+        echo ""
+        log_warn "Обнаружена незавершённая предыдущая установка!"
+        [[ -n "$SAVED_DOMAIN" || -n "$SAVED_IP" ]] && echo "  Узел:               ${SAVED_DOMAIN:-?} (${SAVED_IP:-?}, SSH:${SAVED_SSH:-?})"
+        echo "  Последний успешный: ${LAST_DONE}"
+        [[ -n "$CUR_MOD" ]] && echo "  Прервана на:        ${CUR_MOD}"
+        echo "  Следующий шаг:      ${NEXT_MOD}"
+        echo ""
+        echo "  [1] Продолжить с модуля ${NEXT_MOD} (рекомендуется)"
+        echo "  [2] Перезапустить установку сначала (с ${MODULES[0]})"
+        echo "  [0] Выход"
+        while true; do
+            read -erp "  Выбор [1]: " RESUME_CHOICE
+            case "${RESUME_CHOICE:-1}" in
+                1)
+                    FROM_MODULE="$NEXT_MOD"
+                    repair_interrupted_dpkg
+                    log_info "Продолжение установки с модуля: ${FROM_MODULE}"
+                    break
+                    ;;
+                2)
+                    rm -f "$PROGRESS_FILE" "$CURRENT_MODULE_FILE"
+                    repair_interrupted_dpkg
+                    log_info "Перезапуск установки сначала."
+                    break
+                    ;;
+                0)
+                    exit 0
+                    ;;
+                *)
+                    echo -e "${YELLOW}Введите 1, 2 или 0.${NC}"
+                    ;;
+            esac
+        done
+    fi
 fi
 
 run_module() {
@@ -91,10 +208,17 @@ run_module() {
     [[ -f "$script" ]] || log_err "Модуль не найден: ${mod}"
     print_banner "Модуль: ${mod}"
     export BASE_DIR NON_INTERACTIVE
+    if [[ -z "$ONLY_MODULE" ]]; then
+        init_state
+        printf '%s\n' "$mod" > "$CURRENT_MODULE_FILE"
+        chmod 600 "$CURRENT_MODULE_FILE"
+    fi
     bash "$script" "$BASE_DIR"
-    init_state
-    echo "$mod" > "$PROGRESS_FILE"
-    chmod 600 "$PROGRESS_FILE"
+    if [[ -z "$ONLY_MODULE" ]]; then
+        init_state
+        printf '%s\n' "$mod" > "$PROGRESS_FILE"
+        chmod 600 "$PROGRESS_FILE"
+    fi
 }
 
 if [[ -n "$ONLY_MODULE" ]]; then
@@ -112,4 +236,5 @@ for mod in "${MODULES[@]}"; do
     fi
 done
 
+rm -f "$CURRENT_MODULE_FILE"
 log_ok "Все этапы установки успешно завершены."
