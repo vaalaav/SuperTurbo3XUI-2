@@ -206,6 +206,23 @@ flowchart LR
 
 ---
 
+## 📦 Используемые проекты
+
+SuperTurbo 3X-UI использует следующие сторонние компоненты:
+
+- [3x-ui](https://github.com/MHSanaei/3x-ui) — панель управления.
+- [Xray-core](https://github.com/XTLS/Xray-core) — сетевое ядро.
+- [Nginx](https://nginx.org/) — веб-сервер и маршрутизация подключений.
+- [Certbot](https://certbot.eff.org/) — получение и продление SSL-сертификатов.
+- [CrowdSec](https://www.crowdsec.net/) — анализ событий безопасности.
+- [Fail2Ban](https://github.com/fail2ban/fail2ban) — защита от подозрительных попыток доступа и лимит устройств.
+- [CyberOK / Skipa IPs](https://github.com/tread-lightly/CyberOK_Skipa_ips) и [shadow-netlab / traffic-guard-lists](https://github.com/shadow-netlab/traffic-guard-lists) — списки сетей сканеров для антисканера (вместе с данными RIPEstat AS61280).
+- [UFW](https://launchpad.net/ufw) и [nftables](https://netfilter.org/projects/nftables/) — управление сетевой фильтрацией.
+- [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy) — опциональный локальный DoH-резолвер.
+- [vps-psiphon](https://github.com/Chara-Freedom/vps-psiphon) — опциональный выход через Psiphon для Gemini.
+
+---
+
 ## ⚖️ Лицензия и ответственность
 
 Copyright (c) 2026 vaalaav. Код проекта распространяется по лицензии [PolyForm Strict 1.0.0](LICENSE) (разрешено некоммерческое использование; распространение и модификация запрещены).
