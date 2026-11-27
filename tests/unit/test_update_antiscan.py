@@ -72,6 +72,12 @@ class CollectScannersTest(unittest.TestCase):
         self.assertNotIn(ipaddress.IPv4Network("10.0.0.0/8"), nets)
         self.assertNotIn(ipaddress.IPv4Network("8.0.0.0/8"), nets)
 
+    def test_default_sources_include_c24be_skipa_and_shadow_netlab(self) -> None:
+        urls = "\n".join(update_antiscan.TEXT_URLS)
+        self.assertIn("C24Be/AS_Network_List/main/blacklists/blacklist-v4.txt", urls)
+        self.assertIn("CyberOK_Skipa_ips/main/lists/skipa_cidr.txt", urls)
+        self.assertIn("shadow-netlab/traffic-guard-lists/main/public/antiscanner.list", urls)
+
 
 class BuildNftConfigTest(unittest.TestCase):
     def test_with_and_without_allowlist(self) -> None:
