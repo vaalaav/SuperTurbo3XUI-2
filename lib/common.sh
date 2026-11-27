@@ -257,7 +257,11 @@ install_crowdsec() {
     rm -f "$repo_tmp"
 
     log_info "  [2/3] Установка пакетов crowdsec и bouncer (включая загрузку GeoLite2)..."
-    if ! apt_get install -y crowdsec crowdsec-firewall-bouncer-nftables </dev/null >>"$cs_log" 2>&1; then
+    local cs_apt_opts=(-y)
+    if dpkg-query -W -f='${Status}' crowdsec 2>/dev/null | grep -q "install ok installed" && [[ ! -f /etc/crowdsec/config.yaml ]]; then
+        cs_apt_opts+=(--reinstall -o Dpkg::Options::="--force-confmiss")
+    fi
+    if ! apt_get install "${cs_apt_opts[@]}" crowdsec crowdsec-firewall-bouncer-nftables </dev/null >>"$cs_log" 2>&1; then
         if [[ "$cs_log" != "/dev/null" ]]; then
             tail -n 15 "$cs_log" >&2 || true
         fi
