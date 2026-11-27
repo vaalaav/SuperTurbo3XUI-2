@@ -92,9 +92,11 @@ show_security() {
     show_crowdsec_block
     if nft list table inet antiscan >/dev/null 2>&1; then
         local cnt pkts
-        cnt=$(nft list set inet antiscan scanners_v4 2>/dev/null | grep -c '/' || echo 0)
+        cnt=$(nft list set inet antiscan scanners_v4 2>/dev/null \
+            | { grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]+|-([0-9]{1,3}\.){3}[0-9]{1,3})?' || true; } \
+            | wc -l)
         pkts=$(nft list chain inet antiscan prerouting 2>/dev/null | grep -oE 'packets [0-9]+' || echo "packets 0")
-        echo -e "\n${BOLD}[Antiscan nftables]${NC} ~${cnt} сетей | отброшено: ${pkts}"
+        echo -e "\n${BOLD}[Antiscan nftables]${NC} ${cnt} сетей | отброшено: ${pkts}"
     fi
     echo ""
 }

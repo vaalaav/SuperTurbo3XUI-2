@@ -112,6 +112,28 @@ EOF
 cat <<EOF > "$MOCK_BIN/nft"
 #!/usr/bin/env bash
 echo "nft \$*" >> "$MOCK_LOG"
+case "\$*" in
+    "list table inet antiscan")
+        exit 0
+        ;;
+    "list set inet antiscan scanners_v4")
+        cat <<'NFT'
+table inet antiscan {
+	set scanners_v4 {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		elements = { 5.61.16.0/21, 5.143.224.100-5.143.224.107,
+			     37.9.13.54, 37.9.13.84,
+			     45.91.64.0/24 }
+	}
+}
+NFT
+        ;;
+    "list chain inet antiscan prerouting")
+        echo "		ip saddr @scanners_v4 counter packets 17 bytes 800 drop"
+        ;;
+esac
 exit 0
 EOF
 
@@ -143,6 +165,8 @@ run_test_cli() {
 
 sec_on=$(run_test_cli security)
 check "security показывает ВКЛЮЧЁН при активном CrowdSec" grep -q "ВКЛЮЧЁН" <<<"$sec_on"
+check "security точно считает элементы scanners_v4 (CIDR, IP и диапазоны)" \
+    grep -q "5 сетей | отброшено: packets 17" <<<"$sec_on"
 
 run_test_cli security crowdsec disable >/dev/null
 unset ENABLE_CROWDSEC; load_state
