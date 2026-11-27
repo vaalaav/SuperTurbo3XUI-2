@@ -474,7 +474,7 @@ run_audit() {
     echo ""
 }
 
-# Сквозная проверка VPN: временный клиент Xray по каждой ссылке user1 из панели подключается
+# Сквозная проверка VPN: временный клиент Xray по каждой ссылке audit_system из панели подключается
 # к 443 этого сервера так же, как клиент из подписки, и делает запрос наружу.
 vpn_probe() {
     local ok="${GREEN}[OK]${NC}" bad="${RED}[FAIL]${NC}" warn="${YELLOW}[WARN]${NC}"
@@ -488,10 +488,10 @@ vpn_probe() {
     # shellcheck disable=SC1091
     if ! links=$(set +e; source "${INSTALL_DIR}/lib/common.sh" && load_state \
             && ensure_xui_api_token >/dev/null 2>&1 \
-            && python3 "${INSTALL_DIR}/lib/xui_api.py" client-links --email=user1 \
+            && python3 "${INSTALL_DIR}/lib/xui_api.py" client-links --email=audit_system \
                 --panel-port="${PANEL_PORT}" --panel-path="${PANEL_PATH}" \
                 --panel-user="${PANEL_USER}" --panel-pass="${PANEL_PASS}" 2>/dev/null); then
-        echo -e "  ${bad} Панель не отдала ссылки клиента user1 — сквозная проверка VPN пропущена"
+        echo -e "  ${bad} Панель не отдала ссылки клиента audit_system — сквозная проверка VPN пропущена"
         return 0
     fi
     while IFS= read -r link; do

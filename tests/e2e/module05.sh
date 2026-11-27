@@ -99,7 +99,7 @@ scenario_fresh() {
 # Ссылки клиента для сравнения: без названия профиля; sid панель при каждой выдаче выбирает
 # случайно из shortIds инбаунда (3x-ui internal/sub/service.go), поэтому он заменяется на «*».
 client_links() {
-    panel_api "$1" /panel/api/clients/links/user1 | jq -r '.obj[]?' | sed -E 's/#.*//; s/([?&])sid=[^&]*/\1sid=*/' | sort
+    panel_api "$1" /panel/api/clients/links/audit_system | jq -r '.obj[]?' | sed -E 's/#.*//; s/([?&])sid=[^&]*/\1sid=*/' | sort
 }
 inbound_ids() { panel_api "$1" /panel/api/inbounds/list | jq -c '[.obj[] | {id, tag, port}] | sort_by(.id)'; }
 

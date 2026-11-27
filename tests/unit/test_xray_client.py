@@ -28,7 +28,7 @@ PBK = "-Xb2Qm7e1nGq0p9u0r3tXlW8yZ6c4v5b1n2m3k4j5h4"
 
 
 def link(**query: str) -> str:
-    return f"vless://{UUID}@{DOMAIN}:443?{urllib.parse.urlencode(query)}#user1"
+    return f"vless://{UUID}@{DOMAIN}:443?{urllib.parse.urlencode(query)}#audit_system"
 
 
 REALITY = link(

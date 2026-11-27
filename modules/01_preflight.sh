@@ -197,7 +197,7 @@ ENABLE_IP_LIMIT=$([[ "${EN_IPL:-Y}" =~ ^[Nn]$ ]] && echo "false" || echo "true")
 CLIENT_IP_LIMIT=0
 if [[ "$ENABLE_IP_LIMIT" == "true" ]]; then
     while true; do
-        read -erp "   Максимум устройств (IP) на клиента user1 [3]: " IN_IPL
+        read -erp "   Максимум устройств (IP) на клиента audit_system [3]: " IN_IPL
         IN_IPL=${IN_IPL:-3}
         if [[ "$IN_IPL" =~ ^[0-9]+$ ]] && (( IN_IPL >= 1 && IN_IPL <= 50 )); then
             CLIENT_IP_LIMIT="$IN_IPL"

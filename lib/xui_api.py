@@ -454,7 +454,7 @@ def cmd_setup_node(args):
 
     # Сначала удаляем клиентов (по email), затем инбаунды — иначе остаются клиенты-сироты со старым UUID.
     known_emails = {c.get("email") for c in api.list_clients()}
-    for email in ("user1", "user1-reality", "user1-xhttp"):
+    for email in ("audit_system", "user1", "user1-reality", "user1-xhttp"):
         if email in known_emails:
             api.delete_client(email)
 
@@ -597,13 +597,13 @@ def cmd_setup_node(args):
     # UUID клиента VLESS передаётся в поле id; неизвестное поле uuid панель отбрасывает и генерирует свой.
     limit_ip = max(0, int(getattr(args, "limit_ip", "") or 0))
     api.add_client({
-        "email": "user1", "id": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id,
+        "email": "audit_system", "id": client_uuid, "flow": "xtls-rprx-vision", "subId": sub_id,
         "limitIp": limit_ip, "totalGB": 0, "expiryTime": 0, "enable": True, "tgId": 0,
-        "comment": "Primary client", "reset": 0,
+        "comment": "System audit client", "reset": 0,
     }, [rid, xid])
     api.restart_xray()
     api.wait_xray_running()
-    verify_client_links(api.client_links("user1"), client_uuid, args.domain)
+    verify_client_links(api.client_links("audit_system"), client_uuid, args.domain)
     print(
         json.dumps(
             {
@@ -734,7 +734,7 @@ def main():
     p4 = sub.add_parser("client-links")
     for name in ("panel-port", "panel-path", "panel-user", "panel-pass"):
         p4.add_argument(f"--{name}", default="")
-    p4.add_argument("--email", default="user1")
+    p4.add_argument("--email", default="audit_system")
 
     args = parser.parse_args()
     if args.cmd == "client-links":
