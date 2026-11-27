@@ -176,12 +176,10 @@ echo -e "\n7. uTLS отпечаток Reality (Xray 26.9.8+ X25519MLKEM768):"
 echo "   [1] firefox (рекомендуется)"
 echo "   [2] safari"
 echo "   [3] chrome"
-echo "   [4] randomized"
 read -erp "   Выбор [1]: " FP_CHOICE
 case "${FP_CHOICE:-1}" in
     2) UTLS_FP="safari" ;;
     3) UTLS_FP="chrome" ;;
-    4) UTLS_FP="randomized" ;;
     *) UTLS_FP="firefox" ;;
 esac
 
