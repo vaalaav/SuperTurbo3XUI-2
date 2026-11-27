@@ -15,6 +15,8 @@ NC='\033[0m'
 STATE_DIR="${STATE_DIR:-/etc/3xui-node}"
 STATE_FILE="${STATE_FILE:-${STATE_DIR}/state.env}"
 PROGRESS_FILE="${PROGRESS_FILE:-${STATE_DIR}/last_module}"
+CURRENT_MODULE_FILE="${CURRENT_MODULE_FILE:-${STATE_DIR}/current_module}"
+INSTALL_LOCK_FILE="${INSTALL_LOCK_FILE:-${STATE_DIR}/install.lock}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/3xui-node-backups}"
 LOG_FILE="${LOG_FILE:-/var/log/3xui-node-install.log}"
 
@@ -212,12 +214,61 @@ restart_xui() {
     wait_xui_ready "${1:-30}"
 }
 
+# Обёртка над apt-get: неинтерактивный режим и ожидание освобождения lock-файлов dpkg/apt (до 120 с).
+apt_get() {
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 "$@"
+}
+
+# Донастраивает пакеты, прерванные прошлым сбоем (half-configured / unpacked).
+# Если пакет crowdsec остался сломан из-за сетевого таймаута в postinst, очищает его,
+# чтобы последующие apt_get не блокировались — модуль 03 установит его заново или пропустит.
+repair_interrupted_dpkg() {
+    command -v dpkg >/dev/null 2>&1 || return 0
+    local audit
+    audit=$(dpkg --audit 2>/dev/null || true)
+    [[ -n "$audit" ]] || return 0
+    log_warn "Обнаружены незавершённые операции dpkg — выполняю dpkg --configure -a..."
+    if ! DEBIAN_FRONTEND=noninteractive dpkg --configure -a; then
+        if dpkg-query -W -f='${Status}' crowdsec 2>/dev/null | grep -qE 'half-configured|half-installed|unpacked'; then
+            log_warn "Пакет crowdsec остался в незавершённом состоянии — удаляю перед повтором."
+            apt_get purge -y -qq crowdsec crowdsec-firewall-bouncer-nftables >/dev/null 2>&1 || true
+        else
+            log_warn "dpkg --configure -a завершился с ошибкой — проверьте состояние пакетов вручную."
+        fi
+    fi
+}
+
 # Установка и базовая настройка CrowdSec + nftables firewall bouncer.
 install_crowdsec() {
-    log_info "Установка CrowdSec + nftables firewall bouncer..."
-    curl -fsSL https://install.crowdsec.net | sh >/dev/null 2>&1 || return 1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq crowdsec crowdsec-firewall-bouncer-nftables || return 1
-    cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx --force >/dev/null 2>&1 || true
+    local cs_log="${CROWDSEC_INSTALL_LOG:-/var/log/3xui-node-crowdsec-install.log}"
+    local repo_tmp
+    ( umask 077; : > "$cs_log" ) 2>/dev/null || cs_log="/dev/null"
+    log_info "Установка CrowdSec + nftables firewall bouncer (лог: ${cs_log})..."
+    log_info "  [1/3] Подключение репозитория CrowdSec..."
+    repo_tmp=$(mktemp)
+    if ! curl -fsSL --retry 3 --max-time 60 https://install.crowdsec.net -o "$repo_tmp" 2>>"$cs_log" \
+        || ! bash "$repo_tmp" </dev/null >>"$cs_log" 2>&1; then
+        rm -f "$repo_tmp"
+        if [[ "$cs_log" != "/dev/null" ]]; then
+            tail -n 10 "$cs_log" >&2 || true
+        fi
+        return 1
+    fi
+    rm -f "$repo_tmp"
+
+    log_info "  [2/3] Установка пакетов crowdsec и bouncer (включая загрузку GeoLite2)..."
+    if ! apt_get install -y crowdsec crowdsec-firewall-bouncer-nftables </dev/null >>"$cs_log" 2>&1; then
+        if [[ "$cs_log" != "/dev/null" ]]; then
+            tail -n 15 "$cs_log" >&2 || true
+        fi
+        if dpkg-query -W -f='${Status}' crowdsec 2>/dev/null | grep -qE 'half-configured|half-installed|unpacked'; then
+            apt_get purge -y -qq crowdsec crowdsec-firewall-bouncer-nftables >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+
+    log_info "  [3/3] Установка коллекций CrowdSec (linux, sshd, nginx)..."
+    cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx --force >>"$cs_log" 2>&1 || true
 
     mkdir -p /etc/crowdsec/acquis.d
     cat <<'EOF' > /etc/crowdsec/acquis.d/nginx.yaml

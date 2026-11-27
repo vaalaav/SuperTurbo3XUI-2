@@ -23,8 +23,8 @@ if [[ -z "$DEFAULT_REPO" ]]; then
     read -erp "Введите GitHub repo (user/repo): " DEFAULT_REPO
 fi
 
-command -v curl >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq curl; }
-command -v tar  >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq tar; }
+command -v curl >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update -qq && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq curl; }
+command -v tar  >/dev/null 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 update -qq && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq tar; }
 
 TAR_URL="https://github.com/${DEFAULT_REPO}/archive/refs/heads/${BRANCH}.tar.gz"
 TMP_DIR=$(mktemp -d)

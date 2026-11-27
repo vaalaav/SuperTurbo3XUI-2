@@ -43,8 +43,8 @@ PSIPHON_OK=false
 ensure_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         log_info "Установка Docker (пакет docker.io дистрибутива)..."
-        DEBIAN_FRONTEND=noninteractive apt-get update -qq
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
+        apt_get update -qq
+        apt_get install -y -qq docker.io >/dev/null
     fi
     systemctl enable --now docker >/dev/null 2>&1 || true
     docker info >/dev/null 2>&1 || log_err "Docker установлен, но не отвечает — проверьте systemctl status docker."

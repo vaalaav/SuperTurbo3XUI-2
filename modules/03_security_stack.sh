@@ -99,6 +99,7 @@ if [[ "${SSH_PORT_CHANGED:-false}" == "true" && "${NON_INTERACTIVE:-false}" != "
     if read -t 170 -erp "  Подключение прошло успешно? Подтвердить [y/N]: " SSH_OK && [[ "${SSH_OK:-N}" =~ ^[Yy]$ ]]; then
         systemctl stop ssh-port-rollback.timer ssh-port-rollback.service 2>/dev/null || true
         rm -f /usr/local/sbin/ssh-port-rollback.sh
+        save_var SSH_PORT_CHANGED "false"
         log_ok "Новый SSH-порт ${SSH_PORT} подтверждён."
     else
         log_warn "Подтверждение не получено — возвращаю порт ${CUR_SSH_PORT}."
@@ -125,8 +126,8 @@ ufw --force enable >/dev/null
 # 3. Fail2Ban (nftables + явный journalmatch ssh.service + polling nginx)
 log_info "Настройка Fail2Ban..."
 if ! command -v fail2ban-server >/dev/null 2>&1 || [[ ! -d /etc/fail2ban/filter.d ]]; then
-    DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -o Dpkg::Options::="--force-confmiss" -y -qq fail2ban
+    apt_get update -qq
+    apt_get install --reinstall -o Dpkg::Options::="--force-confmiss" -y -qq fail2ban
 fi
 mkdir -p /var/log/nginx
 touch /var/log/nginx/access.log /var/log/nginx/error.log

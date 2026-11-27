@@ -275,5 +275,72 @@ check "архив backup имеет права 600" test "$(stat -c %a "$BK_OUT"
 check "архив содержит state.env и x-ui.db" \
     bash -c 'tar -tzf "$1" | grep -q "state\.env" && tar -tzf "$1" | grep -q "x-ui\.db"' _ "$BK_OUT"
 
+echo "apt_get (ожидание блокировки dpkg)"
+cat <<EOF > "$MOCK_BIN/apt-get"
+#!/usr/bin/env bash
+printf '%s|%s\n' "\${DEBIAN_FRONTEND:-}" "\$*" >> "$MOCK_LOG"
+EOF
+chmod +x "$MOCK_BIN/apt-get"
+: > "$MOCK_LOG"
+env PATH="$MOCK_BIN:$PATH" bash -c 'source "$1/lib/common.sh"; apt_get install -y -qq curl' _ "$REPO"
+check "apt_get задаёт DEBIAN_FRONTEND=noninteractive" grep -q '^noninteractive|' "$MOCK_LOG"
+check "apt_get передаёт -o DPkg::Lock::Timeout=120" grep -q -- '-o DPkg::Lock::Timeout=120 install -y -qq curl' "$MOCK_LOG"
+
+echo "install.sh: определение незавершённой установки (продолжение / перезапуск)"
+INST_TMP="$TMP/inst_test"
+mkdir -p "$INST_TMP/lib" "$INST_TMP/modules" "$INST_TMP/state" "$INST_TMP/backups"
+cp "${REPO}/lib/common.sh" "$INST_TMP/lib/common.sh"
+sed 's/^require_root$/true/' "${REPO}/install.sh" > "$INST_TMP/install.sh"
+chmod +x "$INST_TMP/install.sh"
+INST_TRACE="$INST_TMP/trace.log"
+for m in 01_preflight 02_system_tuning 03_security_stack 04_ssl_and_mask 05_install_3xui 06_ai_routing 07_nginx_config 08_cli_and_audit; do
+    cat <<EOF > "$INST_TMP/modules/${m}.sh"
+#!/usr/bin/env bash
+echo "$m" >> "\${INST_TRACE}"
+EOF
+    chmod +x "$INST_TMP/modules/${m}.sh"
+done
+
+INST_STATE_DIR="$INST_TMP/state"
+INST_STATE_FILE="$INST_STATE_DIR/state.env"
+INST_PROGRESS_FILE="$INST_STATE_DIR/last_module"
+INST_CURRENT_FILE="$INST_STATE_DIR/current_module"
+INST_LOCK_FILE="$INST_STATE_DIR/install.lock"
+cat <<'EOF' > "$INST_STATE_FILE"
+DOMAIN=test.example.com
+SERVER_IP=203.0.113.10
+SSH_PORT=37971
+EOF
+chmod 600 "$INST_STATE_FILE"
+
+echo "02_system_tuning" > "$INST_PROGRESS_FILE"
+echo "03_security_stack" > "$INST_CURRENT_FILE"
+: > "$INST_TRACE"
+printf '1\n' | env PATH="$MOCK_BIN:$PATH" STATE_DIR="$INST_STATE_DIR" STATE_FILE="$INST_STATE_FILE" \
+    PROGRESS_FILE="$INST_PROGRESS_FILE" CURRENT_MODULE_FILE="$INST_CURRENT_FILE" INSTALL_LOCK_FILE="$INST_LOCK_FILE" \
+    BACKUP_ROOT="$INST_TMP/backups" LOG_FILE="$INST_TMP/log" INST_TRACE="$INST_TRACE" \
+    INSTALL_INTERACTIVE_TEST="true" bash "$INST_TMP/install.sh" >/dev/null
+check "выбор [1] продолжает с 03_security_stack" test "$(head -n 1 "$INST_TRACE")" == "03_security_stack"
+check_not "выбор [1] не запускает 01_preflight повторно" grep -qx "01_preflight" "$INST_TRACE"
+check "после завершения last_module = 08_cli_and_audit" test "$(cat "$INST_PROGRESS_FILE")" == "08_cli_and_audit"
+check_not "после завершения current_module удалён" test -e "$INST_CURRENT_FILE"
+
+echo "02_system_tuning" > "$INST_PROGRESS_FILE"
+echo "03_security_stack" > "$INST_CURRENT_FILE"
+: > "$INST_TRACE"
+printf '2\n' | env PATH="$MOCK_BIN:$PATH" STATE_DIR="$INST_STATE_DIR" STATE_FILE="$INST_STATE_FILE" \
+    PROGRESS_FILE="$INST_PROGRESS_FILE" CURRENT_MODULE_FILE="$INST_CURRENT_FILE" INSTALL_LOCK_FILE="$INST_LOCK_FILE" \
+    BACKUP_ROOT="$INST_TMP/backups" LOG_FILE="$INST_TMP/log" INST_TRACE="$INST_TRACE" \
+    INSTALL_INTERACTIVE_TEST="true" bash "$INST_TMP/install.sh" >/dev/null
+check "выбор [2] перезапускает с 01_preflight" test "$(head -n 1 "$INST_TRACE")" == "01_preflight"
+check "перезапуск доходит до 08_cli_and_audit" test "$(tail -n 1 "$INST_TRACE")" == "08_cli_and_audit"
+
+: > "$INST_TRACE"
+env PATH="$MOCK_BIN:$PATH" STATE_DIR="$INST_STATE_DIR" STATE_FILE="$INST_STATE_FILE" \
+    PROGRESS_FILE="$INST_PROGRESS_FILE" CURRENT_MODULE_FILE="$INST_CURRENT_FILE" INSTALL_LOCK_FILE="$INST_LOCK_FILE" \
+    BACKUP_ROOT="$INST_TMP/backups" LOG_FILE="$INST_TMP/log" INST_TRACE="$INST_TRACE" \
+    bash "$INST_TMP/install.sh" --only 02_system_tuning >/dev/null
+check "--only не сбрасывает last_module завершённой установки" test "$(cat "$INST_PROGRESS_FILE")" == "08_cli_and_audit"
+
 echo "итого: ${pass} ok, ${fail} FAIL"
 [[ $fail -eq 0 ]]

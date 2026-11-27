@@ -10,8 +10,8 @@ export DEBIAN_FRONTEND=noninteractive
 . /etc/os-release
 
 log_info "Установка базовых пакетов..."
-apt-get update -qq
-apt-get install -y -qq curl wget gnupg2 ca-certificates lsb-release \
+apt_get update -qq
+apt_get install -y -qq curl wget gnupg2 ca-certificates lsb-release \
     sqlite3 python3 jq socat certbot ufw fail2ban nftables cron openssl dnsutils
 
 log_info "Подключение официального репозитория nginx.org (${ID})..."
@@ -40,11 +40,11 @@ printf "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 9
     > /etc/apt/preferences.d/99nginx
 chmod 644 /etc/apt/sources.list.d/nginx.list /etc/apt/preferences.d/99nginx
 
-apt-get update -qq
+apt_get update -qq
 if dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -q "install ok installed" && [[ ! -f /etc/nginx/mime.types ]]; then
-    apt-get install --reinstall -y -qq -o Dpkg::Options::="--force-confmiss" nginx
+    apt_get install --reinstall -y -qq -o Dpkg::Options::="--force-confmiss" nginx
 else
-    apt-get install -y -qq -o Dpkg::Options::="--force-confmiss" nginx
+    apt_get install -y -qq -o Dpkg::Options::="--force-confmiss" nginx
 fi
 id -u www-data >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin www-data
 
@@ -155,7 +155,7 @@ disable_doh_proxy() {
 # Пакетные socket- и resolvconf-юниты отключаются: они слушают 127.0.2.1:53 и правят resolv.conf.
 configure_doh() {
     log_info "Установка локального DoH-прокси (dnscrypt-proxy, 127.0.0.1:5053)..."
-    if ! apt-get install -y -qq dnscrypt-proxy >/dev/null; then
+    if ! apt_get install -y -qq dnscrypt-proxy >/dev/null; then
         log_warn "Не удалось установить dnscrypt-proxy, переключаюсь на нативный DoT."
         configure_dot
         return 0
